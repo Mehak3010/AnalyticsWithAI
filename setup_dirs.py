@@ -11,7 +11,7 @@ directories = [
     "tests",
     "app",
     ".github/workflows",
-    "reports"
+    "reports",
 ]
 
 for directory in directories:
