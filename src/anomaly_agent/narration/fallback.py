@@ -25,6 +25,8 @@ def template_summary(facts: dict[str, Any]) -> str:
         line2 = "Possible driver: " + "; ".join(str(d) for d in drivers) + " may have contributed."
     else:
         line2 = "Possible driver: not determined from the data."
+    if f.get("driver_note"):
+        line2 += f" {f['driver_note']}"
 
     verdict = {
         "favourable": "the move is favourable, but outside the normal range.",

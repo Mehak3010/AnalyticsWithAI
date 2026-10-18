@@ -1,5 +1,4 @@
-"""
-Turn a raw anomaly dict into a display-ready fact bundle for the LLM and the template.
+"""Turn a raw anomaly dict into a display-ready fact bundle for the LLM and the template.
 
 Numbers are pre-formatted for reading, and statistical fields (z-score, MAD, raw
 deviations) are left out, so the model has nothing technical to echo. The same slim
@@ -47,4 +46,6 @@ def to_llm_facts(facts: dict[str, Any]) -> dict[str, Any]:
     good = f.get("is_good")
     out["assessment"] = "favourable" if good is True else "unfavourable" if good is False else "neutral"
     out["drivers"] = list(f.get("drivers") or [])
+    if f.get("driver_note"):
+        out["driver_note"] = str(f["driver_note"])
     return out

@@ -8,6 +8,7 @@ from typing import Any
 import pandas as pd
 
 from .alerting.email import EmailAlerter
+from .attribution import AttributionEngine
 from .config import load_config
 from .detection import Detector
 from .ingestion import Ingestion
@@ -18,6 +19,8 @@ from .store import AlertStore
 
 SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 TOP_N = 5
+
+logger = logging.getLogger(__name__)
 
 
 def attach_drivers(
@@ -39,6 +42,30 @@ def attach_drivers(
                 matches.append(s)
         matches.sort(key=lambda s: s["abs_deviation"], reverse=True)
         h["drivers"] = [f"{s['segment']} ({s['rel_deviation']:.0%} vs expected)" for s in matches[:max_drivers]]
+
+
+def add_attribution(anomalies: list[dict[str, Any]], df: pd.DataFrame, config: Any) -> None:
+    """Attach segment drivers (contribution, or mix/rate for ratios) to headline anomalies.
+
+    A failure on one anomaly is logged and skipped; it never stops the run."""
+    engine = AttributionEngine(config)
+    metric_types = {m.name: m.type for m in config.metrics}
+    for a in anomalies:
+        a["metric_type"] = metric_types.get(a["metric"])
+        if a["segment"] != "total":
+            continue
+        try:
+            result = engine.attribute(a, df)
+        except Exception as e:
+            logger.warning("Attribution failed for %s: %s: %s", a["metric"], type(e).__name__, e)
+            continue
+        if not result:
+            continue
+        a["attribution"] = result
+        if result["drivers"]:
+            a["drivers"] = result["drivers"]
+        if result["note"]:
+            a["driver_note"] = result["note"]
 
 
 def main() -> None:
@@ -93,6 +120,8 @@ def main() -> None:
         if not anomalies:
             print("No anomalies detected.")
             return
+
+        add_attribution(anomalies, df, config)
 
         scorer = SeverityScorer(config)
         min_level = SEVERITY_RANK.get(config.alerting.min_severity.lower(), 1)
