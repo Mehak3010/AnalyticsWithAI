@@ -1,63 +1,141 @@
-# Business Metrics Anomaly Agent
+# KPI Anomaly Detection & Alerting Agent
 
-A sector-agnostic agent that monitors business metrics in spreadsheets, detects anomalies, compares actuals with forecasts, attributes causes to segments, and sends email alerts.
+An agent that watches business KPIs, flags abnormal movement, lists the segments that moved with it, writes a plain-language summary, and emails an alert, so nobody has to open a spreadsheet to find out a metric broke.
 
-## Features
-- **Ingestion & Validation**: Handles CSV/Excel, missing dates, and data quality checks.
-- **Metric Engine**: Computes additive and ratio metrics correctly.
-- **Anomaly Detection**: Seasonality-aware detection using STL decomposition and robust Z-scores.
-- **Forecasting**: ETS (Holt-Winters) forecasting with 95% prediction intervals.
-- **Attribution**: Root-cause analysis identifying segment drivers.
-- **Narration**: LLM-driven plain language explanations using Groq API.
-- **Alerting**: Email digest alerts via Mailtrap.
-- **Evaluation Harness**: Synthetic anomaly injection and performance scoring.
+> **Status: in development.** The detection, deduplication, narration and alerting pipeline is working and tested. Root-cause attribution, forecast variance and the evaluation harness are not finished yet (see [Status](#status)).
 
-## Setup
+## The problem
 
-1. **Clone the repository**:
-   ```bash
-   git clone <repo-url>
-   cd anomaly-agent
-   ```
+Dashboards show what happened. They don't tell you what changed, why, or whether it matters, and alert systems that fire on every wobble get ignored. This project aims for the opposite: few alerts, each one explained, with duplicates suppressed.
 
-2. **Install dependencies**:
-   ```bash
-   pip install .
-   ```
+## Sample alert
 
-3. **Configure environment**:
-   Create a `.env` file with:
-   ```env
-   GROQ_API_KEY=your_key
-   MAILTRAP_HOST=sandbox.smtp.mailtrap.io
-   MAILTRAP_PORT=587
-   MAILTRAP_USERNAME=your_username
-   MAILTRAP_PASSWORD=your_password
-   ```
+From a real run on the DataCo data (`--as-of 2017-07-07`), using the rule-based fallback summary:
 
-4. **Prepare data**:
-   ```bash
-   python data/prep_dataco.py
-   ```
+> **[MEDIUM] sales, total, 2017-07-07**
+> Observed 41,165.11 against an expected 30,348.33 (35.6% deviation). Possible drivers: category_name=Golf Apparel (124% vs expected); category_name=Golf Gloves (69% vs expected). This move warrants investigation.
 
-## Usage
+<!-- Add a screenshot of the email in Mailtrap: docs/sample_alert.png -->
 
-Run the agent:
+## What works today
+
+- **Config-driven.** One YAML file defines the date column, metrics, dimensions and thresholds. No metric names are hard-coded.
+- **Correct ratio KPIs.** Ratios such as profit margin and late-delivery rate are recomputed from numerator and denominator, never averaged. Partial weeks are dropped so they cannot look like false drops.
+- **Anomaly detection.** An STL decomposition estimates the weekly pattern; a trailing median of the deseasonalised values gives a robust level that is never fitted on the points being judged. Deviations are scored with MAD-based robust z-scores, with a floor so flat or sparse series cannot produce huge scores.
+- **Persistence rule.** An anomaly needs 2 of the last 3 points flagged in the same direction, which suppresses one-day noise. A single extreme point (3x the z threshold) alerts immediately.
+- **Latest-period, headline-only alerting.** Only the last few periods of the headline series can raise an alert. Segment series are used to list possible drivers.
+- **Severity scoring and cooldown deduplication.** A repeat of the same metric, segment and direction inside the cooldown window is suppressed unless its severity escalates. Alerts are stored in SQLite.
+- **LLM summaries with a fallback.** Groq writes the summary; on any API error the agent retries, then falls back to a rule-based summary.
+- **Email digest** over SMTP (Mailtrap sandbox for development), with a `--dry-run` mode that writes the HTML to `reports/`.
+- **Tests and CI.** `pytest` suite plus a GitHub Actions workflow.
+
+## Status
+
+| Component | State |
+|---|---|
+| Ingestion, validation, metric engine (additive and ratio) | Done |
+| Detection, persistence, severity, dedup store | Done, tested |
+| LLM narration with retry and fallback | Done |
+| Email digest, dry run | Done |
+| Segment drivers in alerts | Basic: recently abnormal segments in the same direction, not a measured contribution |
+| Root-cause attribution (contribution to the headline move) | In development |
+| ETS forecasting and volume-price-mix variance | In development (module exists, not wired in) |
+| Numeric validator for LLM summaries | Planned |
+| Evaluation harness (precision, recall, detection delay) | Planned |
+
+## Dataset
+
+[DataCo Smart Supply Chain for Big Data Analysis](https://www.kaggle.com/datasets/shashwatwork/dataco-smart-supply-chain-for-big-data-analysis) (Kaggle), originally published on [Mendeley Data](https://data.mendeley.com/datasets/8gx2fvg2k6/5). Check the licence there before redistributing; the data files are not committed to this repository.
+
+- **Monitoring window:** 2015-01-01 to 2017-09-30, 171,962 order lines, 5 markets (`dataset.end_date` in the config).
+- **Why the cutoff:** from early October 2017 the data degenerates: a constant 68 to 69 order lines a day, only two markets and one or two categories a day. Those months are excluded.
+- **Caveat:** the dataset looks partly synthetic with weak seasonality, so naturally occurring anomalies are few. Detection claims rest on injected anomalies (see [Testing](#testing-and-verification)).
+
+## Quick start
+
+Requires Python 3.11.
+
 ```bash
-python -m anomaly_agent.cli --config config/dataco_supply_chain.yaml
+git clone https://github.com/Mehak3010/<repo-name>.git
+cd <repo-name>
+python -m venv .venv
+# Windows: .venv\Scripts\Activate.ps1      Mac/Linux: source .venv/bin/activate
+pip install -e .
 ```
 
-Run in dry-run mode (no emails):
+Create a `.env` file (never commit it):
+
+```env
+GROQ_API_KEY=your_key
+MAILTRAP_HOST=sandbox.smtp.mailtrap.io
+MAILTRAP_PORT=587
+MAILTRAP_USERNAME=your_username
+MAILTRAP_PASSWORD=your_password
+```
+
+Download the dataset, put `DataCoSupplyChainDataset.csv` in `data/`, then build the tidy table and run:
+
 ```bash
+python data/prep_dataco.py
 python -m anomaly_agent.cli --config config/dataco_supply_chain.yaml --dry-run
 ```
 
-## Architecture
-The project follows a modular pipeline:
-1. `ingestion.py`: Data loading and cleaning.
-2. `metrics.py`: Metric aggregation.
-3. `detection.py`: Anomaly flagging.
-4. `attribution.py`: Root cause analysis.
-5. `narration/`: LLM-based summary generation.
-6. `alerting/`: Email digest delivery.
-7. `store.py`: SQLite-based alert deduplication.
+| Option | Meaning |
+|---|---|
+| `--config PATH` | Config file (required) |
+| `--dry-run` | Write the digest to `reports/last_email_digest.html` instead of sending email |
+| `--as-of YYYY-MM-DD` | Treat later data as unseen; step the date forward to replay scheduled runs |
+| `--full-history` | Scan the whole history instead of the latest periods (for experiments, not alerting) |
+
+## Key configuration
+
+```yaml
+dataset:
+  end_date: "2017-09-30"      # monitoring window
+detection:
+  z_threshold: 3.5
+  persistence: {required: 2, window: 3}
+  min_relative_change: 0.05
+  mad_floor_pct: 0.02
+alerting:
+  min_severity: medium
+  cooldown_days: 3
+  alert_window: 3             # only the last N periods can alert
+  headline_only: true         # segments explain, they do not alert
+```
+
+## Testing and verification
+
+```bash
+python -m pytest -q
+python check_injection.py     # injects known anomalies into the real data
+```
+
+The injection check, on the real data: clean data gives no alert; a 3x one-day spike alerts on its exact date; a 1.35x one-day blip is suppressed; a 1.5x three-day shift alerts once with no opposite-direction echo. Deduplication, config-driven behaviour and the LLM fallback were also checked by hand. See [VERIFICATION.md](VERIFICATION.md) for the full log, including what is not done and the known limits.
+
+## Project structure
+
+```
+config/                 YAML configs
+data/prep_dataco.py     raw CSV -> tidy table (raw files are not committed)
+src/anomaly_agent/
+  ingestion.py          load, window, validate
+  metrics.py            additive and ratio series
+  detection.py          baseline, robust z-scores, persistence
+  severity.py           severity scoring
+  store.py              SQLite alert log and deduplication
+  narration/            Groq client, retry, fallback
+  alerting/             email digest
+  cli.py                entry point
+  attribution.py, forecasting.py, variance.py    in development
+tests/                  pytest suite
+check_injection.py      injection check on real data
+```
+
+## Roadmap
+
+1. Segment contribution analysis for headline alerts.
+2. ETS forecasting with prediction intervals and a volume-price-mix variance bridge.
+3. Numeric validator so an LLM summary can never state a figure that is not in the data.
+4. Evaluation harness reporting precision, recall and detection delay against baselines.
+5. Scheduled runs with GitHub Actions.
