@@ -41,11 +41,12 @@ def attach_drivers(
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
     parser = argparse.ArgumentParser(description="Business Metrics Anomaly Agent")
     parser.add_argument("--config", required=True, help="Path to config file")
-    parser.add_argument("--dry-run", action="store_true", help="Do not send emails")
+    parser.add_argument("--dry-run", action="store_true", help="Do not send emails or write to the alert store")
     parser.add_argument("--as-of", help="Treat data after this date (YYYY-MM-DD) as unseen")
     parser.add_argument(
         "--full-history",
@@ -104,7 +105,7 @@ def main() -> None:
         if not scored:
             return
 
-        store = AlertStore()
+        store = AlertStore(dry_run=args.dry_run)
         to_alert = store.check_and_update_batch(scored, config.alerting.cooldown_days)
         print(f"{len(to_alert)} alerts after deduplication ({len(scored) - len(to_alert)} suppressed or merged).")
         if not to_alert:
@@ -126,6 +127,12 @@ def main() -> None:
                 a["narration"],
             )
         print(f"Narrations: {narrator.narrated} from LLM, {narrator.fallbacks} fallbacks")
+
+        if args.dry_run:
+            for a in to_alert:
+                print(f"\n[{a['severity'].upper()}] {a['metric']} / {a['segment']} on {a['date'].date()}")
+                print(a["narration"])
+            print()
 
         print("Sending Alerts...")
         EmailAlerter(config).send_digest(to_alert, dry_run=args.dry_run)
