@@ -49,7 +49,7 @@ def test_dedup_fires_after_cooldown(store):
 
     # Manually backdate last_seen in DB
     past_date = datetime.now() - timedelta(days=5)
-    with store._get_connection() as conn:
+    with store._session() as conn:
         conn.execute(
             "UPDATE alerts SET last_seen = ? WHERE fingerprint = ?",
             (past_date.isoformat(), fp),
@@ -85,3 +85,19 @@ def test_dedup_fires_on_severity_change(store):
     # 2. High severity alert within cooldown
     to_alert2 = store.check_and_update_batch([anomaly_high], cooldown_days=3)
     assert len(to_alert2) == 1, "Alert should fire if severity changes, even within cooldown"
+
+
+def test_unsent_alert_is_retried_not_lost(store):
+    anomaly = {
+        "metric": "sales",
+        "segment": "total",
+        "direction": "up",
+        "severity": "high",
+        "date": datetime.now(),
+    }
+
+    # 1. First alert, but delivery fails: never marked as sent
+    assert len(store.check_and_update_batch([anomaly], cooldown_days=3)) == 1
+
+    # 2. Next run: the alert must come back so the email can be retried
+    assert len(store.check_and_update_batch([anomaly], cooldown_days=3)) == 1, "Unsent alert must be retried"

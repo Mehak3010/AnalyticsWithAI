@@ -23,6 +23,10 @@ class AlertStore:
     """SQLite alert log. first_seen / last_seen hold the anomaly's DATA date;
     created_at holds the wall-clock time the alert was first stored.
 
+    An alert is suppressed only if it is inside the cooldown AND its email was actually
+    sent (email_sent_flag = 1). An alert whose delivery failed stays pending and is
+    returned again on the next run, so a failed send never loses an alert.
+
     With ``dry_run=True`` the store works on an in-memory copy of the existing database:
     dedup and cooldown see the real history, but nothing is written to disk.
     ``db_path=":memory:"`` gives a fresh in-memory store (useful in tests).
@@ -113,19 +117,20 @@ class AlertStore:
             for fp, a in best.items():
                 a_date = _to_datetime(a.get("date")) or now
                 row = conn.execute(
-                    "SELECT last_seen, severity FROM alerts WHERE fingerprint = ?",
+                    "SELECT last_seen, severity, email_sent_flag FROM alerts WHERE fingerprint = ?",
                     (fp,),
                 ).fetchone()
 
                 if row:
-                    last_date, old_sev = _to_datetime(row[0]), row[1]
+                    last_date, old_sev, sent = _to_datetime(row[0]), row[1], bool(row[2])
                     escalated = SEVERITY_RANK.get(a["severity"], 0) > SEVERITY_RANK.get(old_sev, 0)
                     days = (a_date - last_date).days
-                    if (days < cooldown_days) and not escalated:
-                        continue  # repeat inside cooldown (or older than what we have)
+                    if sent and days < cooldown_days and not escalated:
+                        continue  # already emailed, repeat inside cooldown (or older than what we have)
+                    new_last = max(a_date, last_date)  # a retry of an older alert must not move last_seen back
                     conn.execute(
                         "UPDATE alerts SET last_seen = ?, severity = ?, email_sent_flag = 0 WHERE fingerprint = ?",
-                        (a_date.isoformat(), a["severity"], fp),
+                        (new_last.isoformat(), a["severity"], fp),
                     )
                 else:
                     conn.execute(

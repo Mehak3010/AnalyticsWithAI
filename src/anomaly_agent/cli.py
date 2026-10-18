@@ -1,5 +1,6 @@
 import argparse
 import logging
+import smtplib
 import sys
 import traceback
 from typing import Any
@@ -135,7 +136,12 @@ def main() -> None:
             print()
 
         print("Sending Alerts...")
-        EmailAlerter(config).send_digest(to_alert, dry_run=args.dry_run)
+        try:
+            EmailAlerter(config).send_digest(to_alert, dry_run=args.dry_run)
+        except (smtplib.SMTPException, OSError) as e:
+            print(f"Email delivery failed ({type(e).__name__}: {e}).")
+            print("The alerts are stored as pending and will be retried on the next run.")
+            sys.exit(1)
 
         if not args.dry_run:
             store.mark_email_sent([store.get_fingerprint(a["metric"], a["segment"], a["direction"]) for a in to_alert])

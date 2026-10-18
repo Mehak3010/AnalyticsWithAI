@@ -144,6 +144,7 @@ def _anomaly(date, severity="medium"):
 def test_dedup_suppresses_repeat_but_not_escalation(tmp_path):
     store = AlertStore(str(tmp_path / "alerts.db"))
     assert len(store.check_and_update_batch([_anomaly("2016-06-01")], 3)) == 1
+    store.mark_email_sent([store.get_fingerprint("sales", "total", "up")])  # delivered
     assert store.check_and_update_batch([_anomaly("2016-06-01")], 3) == []  # rerun
     assert store.check_and_update_batch([_anomaly("2016-06-02")], 3) == []  # inside cooldown
     assert len(store.check_and_update_batch([_anomaly("2016-06-02", "high")], 3)) == 1  # escalated

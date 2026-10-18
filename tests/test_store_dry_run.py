@@ -3,6 +3,8 @@ from datetime import datetime
 
 from anomaly_agent.store import AlertStore
 
+FP = AlertStore(":memory:").get_fingerprint("sales", "total", "up")
+
 
 def anomaly(day=18, severity="medium"):
     return {
@@ -25,13 +27,32 @@ def rows(path):
 def test_memory_store_persists_across_calls():
     store = AlertStore(":memory:")
     assert len(store.check_and_update_batch([anomaly()], 3)) == 1
+    store.mark_email_sent([FP])
     assert store.check_and_update_batch([anomaly()], 3) == []
 
 
 def test_real_run_is_idempotent(tmp_path):
     db = str(tmp_path / "alerts.db")
-    assert len(AlertStore(db).check_and_update_batch([anomaly()], 3)) == 1
+    first = AlertStore(db)
+    assert len(first.check_and_update_batch([anomaly()], 3)) == 1
+    first.mark_email_sent([FP])
     assert AlertStore(db).check_and_update_batch([anomaly()], 3) == []
+
+
+def test_failed_send_is_retried_next_run(tmp_path):
+    db = str(tmp_path / "alerts.db")
+    assert len(AlertStore(db).check_and_update_batch([anomaly()], 3)) == 1  # email "failed": never marked sent
+    assert len(AlertStore(db).check_and_update_batch([anomaly()], 3)) == 1  # retried, not lost
+    store = AlertStore(db)
+    store.mark_email_sent([FP])
+    assert AlertStore(db).check_and_update_batch([anomaly()], 3) == []  # delivered, now suppressed
+
+
+def test_retry_does_not_move_last_seen_back(tmp_path):
+    db = str(tmp_path / "alerts.db")
+    AlertStore(db).check_and_update_batch([anomaly(25)], 3)
+    AlertStore(db).check_and_update_batch([anomaly(18)], 3)  # older replay of an unsent alert
+    assert rows(db)[0][1].startswith("2016-09-25")
 
 
 def test_dry_run_creates_no_file(tmp_path):
@@ -49,7 +70,9 @@ def test_dry_run_is_repeatable(tmp_path):
 
 def test_dry_run_sees_history_but_does_not_modify_it(tmp_path):
     db = str(tmp_path / "alerts.db")
-    AlertStore(db).check_and_update_batch([anomaly(18)], 3)
+    real = AlertStore(db)
+    real.check_and_update_batch([anomaly(18)], 3)
+    real.mark_email_sent([FP])
     before = rows(db)
 
     dry = AlertStore(db, dry_run=True)
@@ -61,6 +84,7 @@ def test_dry_run_sees_history_but_does_not_modify_it(tmp_path):
 def test_severity_escalation_bypasses_cooldown():
     store = AlertStore(":memory:")
     store.check_and_update_batch([anomaly(18, "medium")], 3)
+    store.mark_email_sent([FP])
     assert len(store.check_and_update_batch([anomaly(19, "high")], 3)) == 1
 
 
