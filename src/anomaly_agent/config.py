@@ -1,21 +1,21 @@
-from typing import Dict, List, Literal, Optional, Union
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel
 
 
 class MetricAggregation(BaseModel):
-    column: Optional[str] = None
+    column: str | None = None
     aggregation: str
 
 
 class MetricConfig(BaseModel):
     name: str
-    column: Optional[str] = None
+    column: str | None = None
     type: Literal["additive", "ratio"]
-    aggregation: Optional[str] = None
-    numerator: Optional[MetricAggregation] = None
-    denominator: Optional[MetricAggregation] = None
+    aggregation: str | None = None
+    numerator: MetricAggregation | None = None
+    denominator: MetricAggregation | None = None
     priority: Literal["high", "medium", "low"]
     good_direction: Literal["up", "down", "neutral"]
 
@@ -24,26 +24,26 @@ class ForecastConfig(BaseModel):
     method: Literal["ets", "seasonal_naive"]
     horizon_days: int
     interval: float
-    backtest: Dict[str, int]
+    backtest: dict[str, int]
 
 
 class DetectionConfig(BaseModel):
     seasonal_period: int
     min_history: int
     z_threshold: float
-    persistence: Dict[str, int]
+    persistence: dict[str, int]
     min_relative_change: float
     # Floor on the robust scale, as a fraction of the series level. Stops a near-zero
     # MAD (sparse or flat series) from producing enormous z-scores.
     mad_floor_pct: float = 0.02
     # A single point this extreme alerts without persistence. Default: 3 x z_threshold.
-    spike_override_z: Optional[float] = None
+    spike_override_z: float | None = None
 
 
 class AlertingConfig(BaseModel):
     min_severity: Literal["low", "medium", "high", "critical"]
     cooldown_days: int
-    email: Dict[str, Union[str, List[str]]]
+    email: dict[str, str | list[str]]
     # Only anomalies in the last N periods of a series can raise an alert.
     alert_window: int = 3
     # Only the headline ("total") series raises alerts; segments explain them.
@@ -61,15 +61,15 @@ class DatasetConfig(BaseModel):
     date_column: str
     grain: str
     segment_grain: str
-    dimensions: List[str]
+    dimensions: list[str]
     # Optional monitoring window (YYYY-MM-DD); rows outside it are ignored at load time.
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
+    start_date: str | None = None
+    end_date: str | None = None
 
 
 class Config(BaseModel):
     dataset: DatasetConfig
-    metrics: List[MetricConfig]
+    metrics: list[MetricConfig]
     forecast: ForecastConfig
     detection: DetectionConfig
     alerting: AlertingConfig

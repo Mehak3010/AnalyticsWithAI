@@ -1,10 +1,13 @@
-from typing import Any, Dict, List, Optional, Tuple
+import logging
+from typing import Any
 
 import numpy as np
 import pandas as pd
 from statsmodels.tsa.seasonal import STL
 
 from .config import Config
+
+logger = logging.getLogger(__name__)
 
 
 class Detector:
@@ -13,10 +16,10 @@ class Detector:
 
     def detect(
         self,
-        series_dict: Dict[Tuple[str, str], pd.Series],
-        as_of: Optional[pd.Timestamp] = None,
-        window: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        series_dict: dict[tuple[str, str], pd.Series],
+        as_of: pd.Timestamp | None = None,
+        window: int | None = None,
+    ) -> list[dict[str, Any]]:
         """Detect anomalies.
 
         as_of:  ignore data after this date (no look-ahead when replaying history).
@@ -24,7 +27,7 @@ class Detector:
                 None scans the whole history (use for evaluation, not for alerting).
         """
         cfg = self.config.detection
-        anomalies: List[Dict[str, Any]] = []
+        anomalies: list[dict[str, Any]] = []
         as_of_ts = pd.Timestamp(as_of) if as_of is not None else None
 
         for (metric, segment), series in series_dict.items():
@@ -65,10 +68,7 @@ class Detector:
             for idx in idxs:
                 obs, exp = float(observed.loc[idx]), float(expected.loc[idx])
                 direction = "up" if obs > exp else "down"
-                is_good = (
-                    metric_cfg.good_direction == "neutral"
-                    or metric_cfg.good_direction == direction
-                )
+                is_good = metric_cfg.good_direction == "neutral" or metric_cfg.good_direction == direction
                 anomalies.append(
                     {
                         "metric": metric,
@@ -91,11 +91,9 @@ class Detector:
     def _period_days(series: pd.Series) -> int:
         if len(series.index) < 2:
             return 1
-        return max(1, int(round(pd.Series(series.index).diff().dt.days.median())))
+        return max(1, round(pd.Series(series.index).diff().dt.days.median()))
 
-    def _get_baseline_and_residual(
-        self, series: pd.Series, holdout: int = 0
-    ) -> Tuple[pd.Series, pd.Series, int]:
+    def _get_baseline_and_residual(self, series: pd.Series, holdout: int = 0) -> tuple[pd.Series, pd.Series, int]:
         """Return (baseline, residual, n_ref).
 
         n_ref is the number of leading points used as the reference (everything except
@@ -133,15 +131,13 @@ class Detector:
                 else:
                     baseline = fitted
                 return baseline, series - baseline, n_ref
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("STL baseline failed, using rolling median: %s", e)
 
         baseline = series.shift(1).rolling(window=28, min_periods=7).median()
         return baseline, series - baseline, max(n_ref, 1)
 
-    def _compute_z_scores(
-        self, residual: pd.Series, baseline: pd.Series, n_ref: Optional[int] = None
-    ) -> pd.Series:
+    def _compute_z_scores(self, residual: pd.Series, baseline: pd.Series, n_ref: int | None = None) -> pd.Series:
         ref = residual.iloc[:n_ref] if n_ref else residual
         r = ref.dropna()
         median = r.median()

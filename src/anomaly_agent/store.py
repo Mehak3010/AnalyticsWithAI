@@ -1,12 +1,12 @@
 import hashlib
 import sqlite3
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 
 
-def _to_datetime(value: Any) -> Optional[datetime]:
+def _to_datetime(value: Any) -> datetime | None:
     if value is None:
         return None
     if hasattr(value, "to_pydatetime"):
@@ -54,31 +54,33 @@ class AlertStore:
     def get_fingerprint(self, metric: str, segment: str, direction: str) -> str:
         return hashlib.md5(f"{metric}:{segment}:{direction}".encode()).hexdigest()
 
-    def check_and_update_batch(
-        self, anomalies: List[Dict[str, Any]], cooldown_days: int
-    ) -> List[Dict[str, Any]]:
+    def check_and_update_batch(self, anomalies: list[dict[str, Any]], cooldown_days: int) -> list[dict[str, Any]]:
         """Return anomalies that should alert. Suppress a repeat of the same
         metric/segment/direction inside the cooldown window unless severity escalated."""
         now = datetime.now()
 
         # Several anomalies can share a fingerprint in one run: keep the latest, most severe
-        best: Dict[str, Dict[str, Any]] = {}
+        best: dict[str, dict[str, Any]] = {}
         for a in anomalies:
             fp = self.get_fingerprint(a["metric"], a["segment"], a["direction"])
             cur = best.get(fp)
-            key = (_to_datetime(a.get("date")) or now, SEVERITY_RANK.get(a["severity"], 0))
+            key = (
+                _to_datetime(a.get("date")) or now,
+                SEVERITY_RANK.get(a["severity"], 0),
+            )
             if cur is None or key > (
                 _to_datetime(cur.get("date")) or now,
                 SEVERITY_RANK.get(cur["severity"], 0),
             ):
                 best[fp] = a
 
-        to_alert: List[Dict[str, Any]] = []
+        to_alert: list[dict[str, Any]] = []
         with self._get_connection() as conn:
             for fp, a in best.items():
                 a_date = _to_datetime(a.get("date")) or now
                 row = conn.execute(
-                    "SELECT last_seen, severity FROM alerts WHERE fingerprint = ?", (fp,)
+                    "SELECT last_seen, severity FROM alerts WHERE fingerprint = ?",
+                    (fp,),
                 ).fetchone()
 
                 if row:
@@ -88,8 +90,7 @@ class AlertStore:
                     if (days < cooldown_days) and not escalated:
                         continue  # repeat inside cooldown (or older than what we have)
                     conn.execute(
-                        "UPDATE alerts SET last_seen = ?, severity = ?, email_sent_flag = 0 "
-                        "WHERE fingerprint = ?",
+                        "UPDATE alerts SET last_seen = ?, severity = ?, email_sent_flag = 0 WHERE fingerprint = ?",
                         (a_date.isoformat(), a["severity"], fp),
                     )
                 else:
@@ -97,8 +98,16 @@ class AlertStore:
                         "INSERT INTO alerts (fingerprint, metric, segment, direction, first_seen, "
                         "last_seen, severity, status, email_sent_flag, created_at) "
                         "VALUES (?, ?, ?, ?, ?, ?, ?, 'open', 0, ?)",
-                        (fp, a["metric"], a["segment"], a["direction"], a_date.isoformat(),
-                         a_date.isoformat(), a["severity"], now.isoformat()),
+                        (
+                            fp,
+                            a["metric"],
+                            a["segment"],
+                            a["direction"],
+                            a_date.isoformat(),
+                            a_date.isoformat(),
+                            a["severity"],
+                            now.isoformat(),
+                        ),
                     )
                 to_alert.append(a)
         return to_alert
@@ -106,10 +115,11 @@ class AlertStore:
     def save_narration(self, fingerprint: str, text: str):
         with self._get_connection() as conn:
             conn.execute(
-                "UPDATE alerts SET summary_text = ? WHERE fingerprint = ?", (text, fingerprint)
+                "UPDATE alerts SET summary_text = ? WHERE fingerprint = ?",
+                (text, fingerprint),
             )
 
-    def mark_email_sent(self, fingerprints: List[str]):
+    def mark_email_sent(self, fingerprints: list[str]):
         with self._get_connection() as conn:
             for fp in fingerprints:
                 conn.execute("UPDATE alerts SET email_sent_flag = 1 WHERE fingerprint = ?", (fp,))

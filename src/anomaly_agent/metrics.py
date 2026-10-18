@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -10,10 +10,10 @@ class MetricEngine:
     def __init__(self, config: Config):
         self.config = config
         # First and last dates in the data; set in process() and used to drop partial weeks.
-        self._first: Optional[pd.Timestamp] = None
-        self._last: Optional[pd.Timestamp] = None
+        self._first: pd.Timestamp | None = None
+        self._last: pd.Timestamp | None = None
 
-    def process(self, df: pd.DataFrame) -> Dict[Tuple[str, str], pd.Series]:
+    def process(self, df: pd.DataFrame) -> dict[tuple[str, str], pd.Series]:
         results = {}
         date_col = self.config.dataset.date_column
         self._first = df[date_col].min().normalize()
@@ -49,7 +49,7 @@ class MetricEngine:
         date_col: str,
         freq: str,
         aggregation: str,
-        column: Optional[str] = None,
+        column: str | None = None,
     ) -> pd.Series:
         """Aggregate one column (or count rows) per time bucket."""
         grouped = df.groupby(pd.Grouper(key=date_col, freq=freq))
@@ -77,18 +77,14 @@ class MetricEngine:
         week_start = series.index - pd.Timedelta(days=6)
         return series[(week_start >= self._first) & (series.index <= self._last)]
 
-    def _compute_series(
-        self, df: pd.DataFrame, metric_cfg: Any, date_col: str, grain: str
-    ) -> pd.Series:
+    def _compute_series(self, df: pd.DataFrame, metric_cfg: Any, date_col: str, grain: str) -> pd.Series:
         if df.empty:
             return pd.Series(dtype=float)
 
         freq = "D" if grain == "daily" else "W"
 
         if metric_cfg.type == "additive":
-            series = self._aggregate(
-                df, date_col, freq, metric_cfg.aggregation, metric_cfg.column
-            )
+            series = self._aggregate(df, date_col, freq, metric_cfg.aggregation, metric_cfg.column)
 
         elif metric_cfg.type == "ratio":
             num_cfg = metric_cfg.numerator
