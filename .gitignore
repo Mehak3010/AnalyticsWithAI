@@ -95,6 +95,7 @@ analyze_alerts.py
 # Tool caches and temporary configs
 .ruff_cache/
 config/tmp_*.yaml
+config/audit_*.yaml
 
 # pyenv
 #   For a library or package, you might want to ignore these files since the Python version is
