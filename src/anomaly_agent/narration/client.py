@@ -1,7 +1,7 @@
 import os
 import re
 import time
-from typing import Any, Dict
+from typing import Any
 
 from dotenv import load_dotenv
 from groq import Groq
@@ -26,7 +26,7 @@ class LLMClient:
         key = os.getenv("GROQ_API_KEY")
         self.client = Groq(api_key=key) if key else None
 
-    def narrate(self, fact_bundle: Dict[str, Any]) -> str:
+    def narrate(self, fact_bundle: dict[str, Any]) -> str:
         """Ask the LLM for a summary; retry with backoff; fall back to a rule-based summary."""
         if self.client is None:
             print("GROQ_API_KEY not set; using rule-based summary")
@@ -43,7 +43,7 @@ class LLMClient:
                 )
                 text = response.choices[0].message.content or ""
                 # Some reasoning models prepend <think>...</think>
-                text = re.sub(r"<think>.*?</think>", "", text, flags=re.S).strip()
+                text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
                 if text:
                     return text
                 print("LLM returned empty text")
@@ -53,7 +53,7 @@ class LLMClient:
                 time.sleep(2 ** (attempt + 1))  # backoff: 2s, 4s, ...
         return self._fallback_narration(fact_bundle)
 
-    def _fallback_narration(self, facts: Dict[str, Any]) -> str:
+    def _fallback_narration(self, facts: dict[str, Any]) -> str:
         metric, segment = facts.get("metric"), facts.get("segment")
         obs, exp = facts.get("observed"), facts.get("expected")
         date = facts.get("date")

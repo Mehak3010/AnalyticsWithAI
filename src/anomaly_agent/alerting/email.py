@@ -3,7 +3,7 @@ import os
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Any, Dict, List
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -18,11 +18,11 @@ class EmailAlerter:
     def __init__(self, config: Config):
         self.config = config
         self.host = os.getenv("MAILTRAP_HOST")
-        self.port = int(os.getenv("MAILTRAP_PORT", 587))
+        self.port = int(os.getenv("MAILTRAP_PORT", "587"))
         self.username = os.getenv("MAILTRAP_USERNAME")
         self.password = os.getenv("MAILTRAP_PASSWORD")
 
-    def send_digest(self, anomalies: List[Dict[str, Any]], dry_run: bool = False):
+    def send_digest(self, anomalies: list[dict[str, Any]], dry_run: bool = False):
         if not anomalies:
             print("No anomalies to send.")
             return
@@ -54,10 +54,13 @@ class EmailAlerter:
             print(f"Failed to send email: {e}")
             raise  # let the caller know, so alerts are not marked as sent
 
-    def _build_html_body(self, anomalies: List[Dict[str, Any]]) -> str:
+    def _build_html_body(self, anomalies: list[dict[str, Any]]) -> str:
         ordered = sorted(
             anomalies,
-            key=lambda x: (SEVERITY_RANK.get(x["severity"], 0), abs(x.get("z_score", 0))),
+            key=lambda x: (
+                SEVERITY_RANK.get(x["severity"], 0),
+                abs(x.get("z_score", 0)),
+            ),
             reverse=True,
         )
         rows = ""
@@ -69,15 +72,15 @@ class EmailAlerter:
             narration = html.escape(a.get("narration") or "No narration available.")
             rows += f"""
             <tr>
-                <td><b>[{a['severity'].upper()}]</b> {html.escape(a['metric'])}</td>
-                <td>{html.escape(a['segment'])}</td>
+                <td><b>[{a["severity"].upper()}]</b> {html.escape(a["metric"])}</td>
+                <td>{html.escape(a["segment"])}</td>
                 <td>{date_txt}</td>
-                <td>{a['observed']:.2f}</td>
-                <td>{a['expected']:.2f}</td>
-                <td>{a['rel_deviation']:.1%}</td>
+                <td>{a["observed"]:.2f}</td>
+                <td>{a["expected"]:.2f}</td>
+                <td>{a["rel_deviation"]:.1%}</td>
             </tr>
             <td colspan="6" style="white-space: pre-line"><i>{narration}</i></td>
-            {f'<tr><td colspan="6">{html.escape(drivers_txt)}</td></tr>' if drivers_txt else ''}
+            {f'<tr><td colspan="6">{html.escape(drivers_txt)}</td></tr>' if drivers_txt else ""}
             <tr><td colspan="6"><hr></td></tr>
             """
 
