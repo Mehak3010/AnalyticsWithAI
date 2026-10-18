@@ -3,6 +3,7 @@ dataset:
   date_column: order_date
   grain: daily
   segment_grain: weekly
+  end_date: "2017-09-30"     # the data degenerates after early Oct 2017 (see README)
   dimensions:
     - market
     - order_region
@@ -64,15 +65,19 @@ forecast:
 detection:
   seasonal_period: 7
   min_history: 28
+  # Defaults. Do not commit test values (e.g. 10 or 15) here; use a copy for experiments.
   z_threshold: 3.5
   persistence:
     required: 2
     window: 3
   min_relative_change: 0.05
+  mad_floor_pct: 0.02
 
 alerting:
   min_severity: medium
   cooldown_days: 3
+  alert_window: 3
+  headline_only: true
   email:
     to: ["team@example.com"]
     subject_prefix: "[Metric Alert]"
