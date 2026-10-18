@@ -23,10 +23,14 @@ SYSTEM_PROMPT = (
 class LLMClient:
     def __init__(self, config: Config):
         self.config = config
-        self.client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+        key = os.getenv("GROQ_API_KEY")
+        self.client = Groq(api_key=key) if key else None
 
     def narrate(self, fact_bundle: Dict[str, Any]) -> str:
         """Ask the LLM for a summary; retry with backoff; fall back to a rule-based summary."""
+        if self.client is None:
+            print("GROQ_API_KEY not set; using rule-based summary")
+            return self._fallback_narration(fact_bundle)
         attempts = 1 + max(0, self.config.llm.max_retries)
         for attempt in range(attempts):
             try:
