@@ -1,4 +1,5 @@
 import argparse
+import logging
 import sys
 import traceback
 from typing import Any
@@ -10,7 +11,7 @@ from .config import load_config
 from .detection import Detector
 from .ingestion import Ingestion
 from .metrics import MetricEngine
-from .narration.client import LLMClient
+from .narration.client import Narrator, build_client
 from .severity import SeverityScorer
 from .store import AlertStore
 
@@ -39,7 +40,9 @@ def attach_drivers(
         h["drivers"] = [f"{s['segment']} ({s['rel_deviation']:.0%} vs expected)" for s in matches[:max_drivers]]
 
 
-def main():
+def main() -> None:
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
     parser = argparse.ArgumentParser(description="Business Metrics Anomaly Agent")
     parser.add_argument("--config", required=True, help="Path to config file")
     parser.add_argument("--dry-run", action="store_true", help="Do not send emails")
@@ -115,13 +118,14 @@ def main():
         )[:TOP_N]
 
         print(f"Generating Narrations (top {len(to_alert)})...")
-        llm = LLMClient(config)
+        narrator = Narrator(build_client(config), max_retries=config.llm.max_retries)
         for a in to_alert:
-            a["narration"] = llm.narrate(a)
+            a["narration"] = narrator.narrate(a)
             store.save_narration(
                 store.get_fingerprint(a["metric"], a["segment"], a["direction"]),
                 a["narration"],
             )
+        print(f"Narrations: {narrator.narrated} from LLM, {narrator.fallbacks} fallbacks")
 
         print("Sending Alerts...")
         EmailAlerter(config).send_digest(to_alert, dry_run=args.dry_run)
