@@ -82,6 +82,20 @@ target/
 profile_default/
 ipython_config.py
 
+# Scratch and audit scripts
+audit/
+audit_*.py
+check_claim_*.py
+check_severity.py
+test_llm.py
+list_models.py
+inspect_db.py
+analyze_alerts.py
+
+# Tool caches and temporary configs
+.ruff_cache/
+config/tmp_*.yaml
+
 # pyenv
 #   For a library or package, you might want to ignore these files since the Python version is
 #   handled by the packaging tool. For a containerized application, you might want to ignore
