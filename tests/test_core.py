@@ -11,20 +11,49 @@ from anomaly_agent.store import AlertStore
 
 def make_config() -> Config:
     return Config(
-        dataset={"path": "x.csv", "date_column": "order_date", "grain": "daily",
-                 "segment_grain": "weekly", "dimensions": ["market"]},
+        dataset={
+            "path": "x.csv",
+            "date_column": "order_date",
+            "grain": "daily",
+            "segment_grain": "weekly",
+            "dimensions": ["market"],
+        },
         metrics=[
-            {"name": "sales", "column": "sales", "type": "additive", "aggregation": "sum",
-             "priority": "high", "good_direction": "up"},
-            {"name": "profit_margin", "type": "ratio",
-             "numerator": {"column": "profit", "aggregation": "sum"},
-             "denominator": {"column": "sales", "aggregation": "sum"},
-             "priority": "high", "good_direction": "up"},
+            {
+                "name": "sales",
+                "column": "sales",
+                "type": "additive",
+                "aggregation": "sum",
+                "priority": "high",
+                "good_direction": "up",
+            },
+            {
+                "name": "profit_margin",
+                "type": "ratio",
+                "numerator": {"column": "profit", "aggregation": "sum"},
+                "denominator": {"column": "sales", "aggregation": "sum"},
+                "priority": "high",
+                "good_direction": "up",
+            },
         ],
-        forecast={"method": "ets", "horizon_days": 14, "interval": 0.95, "backtest": {"folds": 2, "step_days": 14}},
-        detection={"seasonal_period": 7, "min_history": 28, "z_threshold": 3.5,
-                   "persistence": {"required": 2, "window": 3}, "min_relative_change": 0.05},
-        alerting={"min_severity": "medium", "cooldown_days": 3, "email": {"to": ["a@b.c"], "subject_prefix": "[T]"}},
+        forecast={
+            "method": "ets",
+            "horizon_days": 14,
+            "interval": 0.95,
+            "backtest": {"folds": 2, "step_days": 14},
+        },
+        detection={
+            "seasonal_period": 7,
+            "min_history": 28,
+            "z_threshold": 3.5,
+            "persistence": {"required": 2, "window": 3},
+            "min_relative_change": 0.05,
+        },
+        alerting={
+            "min_severity": "medium",
+            "cooldown_days": 3,
+            "email": {"to": ["a@b.c"], "subject_prefix": "[T]"},
+        },
         llm={"provider": "groq", "model": "m", "max_retries": 0},
     )
 
@@ -38,8 +67,14 @@ def df() -> pd.DataFrame:
         weekly = 1.0 + 0.2 * np.sin(2 * np.pi * day.dayofweek / 7)
         for market in ("A", "B"):
             sales = 10_000 * weekly * rng.normal(1.0, 0.04)
-            rows.append({"order_date": day, "market": market, "sales": sales,
-                         "profit": sales * rng.normal(0.11, 0.004)})
+            rows.append(
+                {
+                    "order_date": day,
+                    "market": market,
+                    "sales": sales,
+                    "profit": sales * rng.normal(0.11, 0.004),
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -97,15 +132,20 @@ def test_severity_increases_with_deviation():
 
 
 def _anomaly(date, severity="medium"):
-    return {"metric": "sales", "segment": "total", "direction": "up",
-            "severity": severity, "date": pd.Timestamp(date)}
+    return {
+        "metric": "sales",
+        "segment": "total",
+        "direction": "up",
+        "severity": severity,
+        "date": pd.Timestamp(date),
+    }
 
 
 def test_dedup_suppresses_repeat_but_not_escalation(tmp_path):
     store = AlertStore(str(tmp_path / "alerts.db"))
     assert len(store.check_and_update_batch([_anomaly("2016-06-01")], 3)) == 1
-    assert store.check_and_update_batch([_anomaly("2016-06-01")], 3) == []   # rerun
-    assert store.check_and_update_batch([_anomaly("2016-06-02")], 3) == []   # inside cooldown
+    assert store.check_and_update_batch([_anomaly("2016-06-01")], 3) == []  # rerun
+    assert store.check_and_update_batch([_anomaly("2016-06-02")], 3) == []  # inside cooldown
     assert len(store.check_and_update_batch([_anomaly("2016-06-02", "high")], 3)) == 1  # escalated
     assert len(store.check_and_update_batch([_anomaly("2016-06-20")], 3)) == 1  # after cooldown
 
