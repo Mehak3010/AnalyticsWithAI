@@ -38,11 +38,11 @@ class SeverityScorer:
             score += 1
             
         # Mapping score to severity
-        if score >= 8:
+        if score >= 12:
             return "critical"
-        elif score >= 5:
+        elif score >= 8:
             return "high"
-        elif score >= 3:
+        elif score >= 5:
             return "medium"
         else:
             return "low"
