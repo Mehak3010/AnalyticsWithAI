@@ -19,8 +19,15 @@ class Ingestion:
         # Parse dates
         df[self.config.dataset.date_column] = pd.to_datetime(df[self.config.dataset.date_column])
         
+        # Optional monitoring window
+        date_col = self.config.dataset.date_column
+        if self.config.dataset.start_date:
+            df = df[df[date_col] >= pd.Timestamp(self.config.dataset.start_date)]
+        if self.config.dataset.end_date:
+            df = df[df[date_col] < pd.Timestamp(self.config.dataset.end_date) + pd.Timedelta(days=1)]
+
         # Sort by date
-        df = df.sort_values(self.config.dataset.date_column)
+        df = df.sort_values(date_col)
         
         return df
 
