@@ -2,7 +2,7 @@
 
 An agent that watches business KPIs, flags abnormal movement, lists the segments that moved with it, writes a plain-language summary, and emails an alert, so nobody has to open a spreadsheet to find out a metric broke.
 
-> **Status: in development.** The detection and alerting pipeline, contribution attribution, numeric narration validation, forecasting/variance components, and an injection-based evaluation harness are implemented to varying levels. Forecasting and variance analysis are not yet wired into the production alerting flow; see [Status](#status).
+> **Status: in development.** The detection and alerting pipeline includes contribution attribution, numeric narration validation, forecast context, and a volume-price-mix variance bridge for headline sales anomalies. An injection-based evaluation harness is available; a reproducible comparative evaluation report and production scheduling remain future work.
 
 ## The problem
 
@@ -15,7 +15,7 @@ From a real run on the DataCo data (`--as-of 2017-07-07`), using the rule-based 
 > **[MEDIUM] sales, total, 2017-07-07**
 > Observed 41,165.11 against an expected 30,348.33 (35.6% deviation). Possible drivers: category_name=Golf Apparel (124% vs expected); category_name=Golf Gloves (69% vs expected). This move warrants investigation.
 
-<!-- Add a screenshot of the email in Mailtrap: docs/sample_alert.png -->
+<!-- TODO: Add a representative screenshot of the generated email digest. -->
 
 ## What works today
 
@@ -39,7 +39,7 @@ From a real run on the DataCo data (`--as-of 2017-07-07`), using the rule-based 
 | Email digest, dry run | Done |
 | Segment drivers in alerts | Recent anomalous segments plus measured attribution when available |
 | Root-cause attribution (additive contribution and ratio mix/rate effects) | Implemented with tests; attached to headline anomalies |
-| ETS forecasting and volume-price-mix variance | Modules implemented and tested; not yet wired into the production alerting flow |
+| ETS forecast context and volume-price-mix variance | Forecast outlook and reconciled sales variance context are attached to eligible headline sales alerts and rendered in the email digest; covered by tests |
 | Numeric validator for LLM summaries | Implemented; invalid numbers trigger retry and deterministic fallback |
 | Evaluation harness | Implemented under `evaluation/`; supports injected cases, baseline comparisons, precision/recall/F1, delay and false-alarm rate |
 
@@ -56,8 +56,8 @@ From a real run on the DataCo data (`--as-of 2017-07-07`), using the rule-based 
 Requires Python 3.11.
 
 ```bash
-git clone https://github.com/Mehak3010/<repo-name>.git
-cd <repo-name>
+git clone https://github.com/Mehak3010/AnalyticsWithAI.git
+cd AnalyticsWithAI
 python -m venv .venv
 # Windows: .venv\Scripts\Activate.ps1      Mac/Linux: source .venv/bin/activate
 pip install -e .
@@ -137,7 +137,6 @@ check_injection.py      injection check on real data
 
 ## Roadmap
 
-1. Wire ETS forecasts and the volume-price-mix bridge into alert/report output.
-2. Run and publish a reproducible evaluation report comparing the production detector with baselines across injected anomaly types and magnitudes.
-3. Add scheduled production runs and operational monitoring.
-4. Add a representative alert-email screenshot and a link to a green CI run.
+1. Run and publish a reproducible evaluation report comparing the production detector with baselines across injected anomaly types and magnitudes.
+2. Add scheduled production runs and operational monitoring.
+3. Add a representative alert-email screenshot and a link to a green CI run.
