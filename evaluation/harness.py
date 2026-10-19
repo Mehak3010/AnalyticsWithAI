@@ -72,8 +72,11 @@ def sample_dates(
 def run_series_eval(series: pd.Series, runners: dict[str, Runner], settings: EvalSettings) -> dict:
     """Inject every (type, magnitude) at several dates and score every runner on the same cases."""
     series = series.astype(float)
-    end = series.index.max()
-    eval_dates = list(pd.date_range(end - pd.Timedelta(days=settings.eval_days), end))
+    end = pd.Timestamp(series.index.max())
+    start = end - pd.Timedelta(days=settings.eval_days)
+    # Only use timestamps that exist in the input series. Injecting on a calendar day absent
+    # from a sparse series is a no-op, which silently turns a labelled anomaly into a missed case.
+    eval_dates = [pd.Timestamp(d) for d in series.index if start <= pd.Timestamp(d) <= end]
     rng = np.random.default_rng(settings.seed)
 
     # Clean replay: false alarms, and the natural anomalies that must not count against the injection.
@@ -100,7 +103,7 @@ def run_series_eval(series: pd.Series, runners: dict[str, Runner], settings: Eva
             for date in dates:
                 injected = injector.inject(series, anomaly_type, date, magnitude)
                 case = Case(anomaly_type, magnitude, date, injected_direction(anomaly_type, magnitude))
-                window = [d for d in pd.date_range(date, date + pd.Timedelta(days=settings.max_delay)) if d <= end]
+                window = [d for d in eval_dates if date <= d <= date + pd.Timedelta(days=settings.max_delay)]
                 for name, runner in runners.items():
                     replay = runner(injected, window)
                     results[name].append(score_case(case, replay, clean_flags[name], settings.max_delay))
