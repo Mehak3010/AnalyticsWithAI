@@ -15,14 +15,14 @@ What was tested, how, and what was observed. Environment: Python 3.11, local run
 | Severity scoring | `pytest`: severity increases with deviation | PASS (unit test) |
 | Email digest renders | `--dry-run` writes `reports/last_email_digest.html` | PASS |
 | Email delivered via SMTP | Real Mailtrap send | TODO |
-| CI | GitHub Actions | Recent feature PRs were merged after checks passed; add a stable green-run link here |
+| CI | GitHub Actions | Feature integration and variance-context test PRs were merged after their CI runs passed; rerun CI after future changes |
 | Row count and date range | Counted rows in the tidy table after the `end_date` filter | PASS: 171,962 rows, 2015-01-01 to 2017-09-30, 5 markets |
 
 ## Implemented components not yet fully operationalized
 
 - **Root-cause attribution:** `src/anomaly_agent/attribution.py` calculates additive segment contributions and ratio mix/rate effects; `cli.py` attaches the results to headline anomalies when enough history is available.
 - **Numeric narration validation:** `src/anomaly_agent/narration/validator.py` checks numeric claims against the slim fact bundle. The narrator retries rejected output and then uses the deterministic template.
-- **Forecasting and variance:** `src/anomaly_agent/forecasting.py` provides ETS and seasonal-naive forecasts; `src/anomaly_agent/variance.py` provides a volume-price-mix bridge. These modules are not yet wired into the production alert/email flow.
+- **Forecasting and variance:** `src/anomaly_agent/forecasting.py` provides ETS and seasonal-naive forecasts. Forecast context is attached to eligible headline anomalies and displayed in the email digest. `src/anomaly_agent/variance.py` provides the volume-price-mix bridge, and `src/anomaly_agent/variance_context.py` attaches a reconciled bridge to eligible headline sales anomalies using net sales per unit as effective price. The email digest renders the variance context. Unit and integration tests cover the bridge and fail-open behaviour.
 - **Evaluation harness:** `evaluation/` contains anomaly injection, detector replay, baseline methods and scoring for precision, recall, F1, detection delay and false-alarm rate. Run its tests with the full pytest suite; a published real-data comparison report remains to be generated.
 
 ## Known limits
