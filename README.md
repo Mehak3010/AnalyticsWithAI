@@ -2,7 +2,7 @@
 
 An agent that watches business KPIs, flags abnormal movement, lists the segments that moved with it, writes a plain-language summary, and emails an alert, so nobody has to open a spreadsheet to find out a metric broke.
 
-> **Status: in development.** The detection, deduplication, narration and alerting pipeline is working and tested. Root-cause attribution, forecast variance and the evaluation harness are not finished yet (see [Status](#status)).
+> **Status: in development.** The detection and alerting pipeline, contribution attribution, numeric narration validation, forecasting/variance components, and an injection-based evaluation harness are implemented to varying levels. Forecasting and variance analysis are not yet wired into the production alerting flow; see [Status](#status).
 
 ## The problem
 
@@ -37,11 +37,11 @@ From a real run on the DataCo data (`--as-of 2017-07-07`), using the rule-based 
 | Detection, persistence, severity, dedup store | Done, tested |
 | LLM narration with retry and fallback | Done |
 | Email digest, dry run | Done |
-| Segment drivers in alerts | Basic: recently abnormal segments in the same direction, not a measured contribution |
-| Root-cause attribution (contribution to the headline move) | In development |
-| ETS forecasting and volume-price-mix variance | In development (module exists, not wired in) |
-| Numeric validator for LLM summaries | Planned |
-| Evaluation harness (precision, recall, detection delay) | Planned |
+| Segment drivers in alerts | Recent anomalous segments plus measured attribution when available |
+| Root-cause attribution (additive contribution and ratio mix/rate effects) | Implemented with tests; attached to headline anomalies |
+| ETS forecasting and volume-price-mix variance | Modules implemented and tested; not yet wired into the production alerting flow |
+| Numeric validator for LLM summaries | Implemented; invalid numbers trigger retry and deterministic fallback |
+| Evaluation harness | Implemented under `evaluation/`; supports injected cases, baseline comparisons, precision/recall/F1, delay and false-alarm rate |
 
 ## Dataset
 
@@ -127,15 +127,17 @@ src/anomaly_agent/
   narration/            Groq client, retry, fallback
   alerting/             email digest
   cli.py                entry point
-  attribution.py, forecasting.py, variance.py    in development
+  attribution.py         segment contribution and ratio mix/rate attribution
+  forecasting.py         ETS forecast and seasonal-naive fallback
+  variance.py            volume-price-mix revenue bridge
+evaluation/              injection, baselines, replay harness and scoring
 tests/                  pytest suite
 check_injection.py      injection check on real data
 ```
 
 ## Roadmap
 
-1. Segment contribution analysis for headline alerts.
-2. ETS forecasting with prediction intervals and a volume-price-mix variance bridge.
-3. Numeric validator so an LLM summary can never state a figure that is not in the data.
-4. Evaluation harness reporting precision, recall and detection delay against baselines.
-5. Scheduled runs with GitHub Actions.
+1. Wire ETS forecasts and the volume-price-mix bridge into alert/report output.
+2. Run and publish a reproducible evaluation report comparing the production detector with baselines across injected anomaly types and magnitudes.
+3. Add scheduled production runs and operational monitoring.
+4. Add a representative alert-email screenshot and a link to a green CI run.
