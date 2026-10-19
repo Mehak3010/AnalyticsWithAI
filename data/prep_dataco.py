@@ -21,26 +21,16 @@ def prep_dataco(input_path: str, output_path: str):
     df["order_date"] = pd.to_datetime(df["order date (DateOrders)"])
 
     # 3. Derive metrics
-    # late_flag (delivered late = 1)
-    # The 'Delivery Status' column or 'Late_delivery_risk' can be used.
-    # Specification says: late_flag (delivered late = 1)
     df["late_flag"] = (df["Delivery Status"] == "Late delivery").astype(int)
-
-    # gross_sales (unit price * quantity)
-    # Order Item Product Price * Order Item Quantity
     df["gross_sales"] = df["Order Item Product Price"] * df["Order Item Quantity"]
-
-    # discount_amount
-    # Order Item Discount
     df["discount_amount"] = df["Order Item Discount"]
 
-    # sales (net sales) is already in 'Sales' or 'Order Item Total'
-    # Based on config, 'sales' column is 'Sales'
+    # Preserve volume and unit price so the downstream variance bridge can
+    # decompose revenue changes without trying to infer these inputs later.
+    df["quantity"] = pd.to_numeric(df["Order Item Quantity"], errors="coerce")
+    df["unit_price"] = pd.to_numeric(df["Order Item Product Price"], errors="coerce")
 
     # 4. Select and rename columns for the tidy dataset
-    # Dimensions: market, order_region, category_name, shipping_mode, customer_segment
-    # Metrics: sales, profit, late_flag, gross_sales, discount_amount, order_item_id
-
     column_mapping = {
         "Market": "market",
         "Order Region": "order_region",
@@ -52,11 +42,9 @@ def prep_dataco(input_path: str, output_path: str):
         "Order Item Id": "order_item_id",
     }
 
-    # Check which columns exist
     available_cols = [c for c in column_mapping if c in df.columns]
     df = df.rename(columns={c: column_mapping[c] for c in available_cols})
 
-    # Keep only necessary columns
     keep_cols = [
         "order_date",
         "market",
@@ -70,11 +58,11 @@ def prep_dataco(input_path: str, output_path: str):
         "late_flag",
         "gross_sales",
         "discount_amount",
+        "quantity",
+        "unit_price",
     ]
 
     df = df[keep_cols]
-
-    # Save to CSV
     df.to_csv(output_path, index=False)
     print(f"Tidy data saved to {output_path}")
     print(f"Total rows: {len(df)}")
