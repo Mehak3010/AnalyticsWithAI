@@ -69,6 +69,14 @@ class EmailAlerter:
             date_txt = date.date().isoformat() if hasattr(date, "date") else str(date or "")
             drivers = a.get("drivers") or []
             drivers_txt = "Possible drivers: " + "; ".join(drivers) if drivers else ""
+            forecast = a.get("forecast_context") or {}
+            forecast_txt = ""
+            if forecast:
+                forecast_txt = (
+                    f"Forward outlook ({forecast['model']}): "
+                    f"{forecast['value']:.2f} on {forecast['date']} "
+                    f"(prediction interval {forecast['lower']:.2f}–{forecast['upper']:.2f})."
+                )
             narration = html.escape(a.get("narration") or "No narration available.")
             rows += f"""
             <tr>
@@ -81,6 +89,7 @@ class EmailAlerter:
             </tr>
             <td colspan="6" style="white-space: pre-line"><i>{narration}</i></td>
             {f'<tr><td colspan="6">{html.escape(drivers_txt)}</td></tr>' if drivers_txt else ""}
+            {f'<tr><td colspan="6">{html.escape(forecast_txt)}</td></tr>' if forecast_txt else ""}
             <tr><td colspan="6"><hr></td></tr>
             """
 

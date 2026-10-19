@@ -11,6 +11,7 @@ from .alerting.email import EmailAlerter
 from .attribution import AttributionEngine
 from .config import load_config
 from .detection import Detector
+from .forecast_context import add_forecast_context
 from .ingestion import Ingestion
 from .metrics import MetricEngine
 from .narration.client import Narrator, build_client
@@ -107,6 +108,8 @@ def main() -> None:
         print("Initializing Detection...")
         window = None if args.full_history else config.alerting.alert_window
         anomalies = Detector(config).detect(series_dict, as_of=as_of, window=window)
+        # Forward-looking context is separate from the detector baseline for past anomalies.
+        add_forecast_context(anomalies, series_dict, config)
         print(
             f"Detected {len(anomalies)} anomalies ({'full history' if window is None else f'last {window} periods'})."
         )
