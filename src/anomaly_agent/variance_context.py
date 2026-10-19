@@ -52,8 +52,10 @@ def add_variance_context(
             for dim in config.dataset.dimensions:
                 if dim not in df.columns:
                     continue
-                def components(part: pd.DataFrame) -> dict[str, dict[str, float]]:
-                    grouped = part.groupby(dim, observed=True).agg(
+                def components(
+                    part: pd.DataFrame, dimension: str
+                ) -> dict[str, dict[str, float]]:
+                    grouped = part.groupby(dimension, observed=True).agg(
                         revenue=("sales", "sum"), volume=("quantity", "sum")
                     )
                     result = {}
@@ -66,8 +68,10 @@ def add_variance_context(
                         result[str(segment)] = {"volume": volume, "price": price}
                     return result
 
-                actual = components(window_data[0])
-                baseline_parts = [components(part) for part in window_data[1:]]
+                actual = components(window_data[0], dim)
+                baseline_parts = [
+                    components(part, dim) for part in window_data[1:]
+                ]
                 segments = set().union(*(part.keys() for part in baseline_parts), actual.keys())
                 baseline = {}
                 for segment in segments:
