@@ -17,6 +17,7 @@ from .metrics import MetricEngine
 from .narration.client import Narrator, build_client
 from .severity import SeverityScorer
 from .store import AlertStore
+from .variance_context import add_variance_context
 
 SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 TOP_N = 5
@@ -125,6 +126,8 @@ def main() -> None:
             return
 
         add_attribution(anomalies, df, config)
+        # Add a reconciled volume-price-mix explanation when source fields permit it.
+        add_variance_context(anomalies, df, config)
 
         scorer = SeverityScorer(config)
         min_level = SEVERITY_RANK.get(config.alerting.min_severity.lower(), 1)
