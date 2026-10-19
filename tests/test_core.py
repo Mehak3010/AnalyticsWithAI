@@ -111,6 +111,16 @@ def test_spike_is_detected_on_its_date(df):
     assert found[0]["direction"] == "up"
 
 
+def test_drop_is_detected_on_its_date(df):
+    found = alerts_for(
+        scaled(df, ["2016-06-15"], 0.2),
+        make_config(),
+        "2016-06-17",
+    )
+    assert [a["date"] for a in found] == [pd.Timestamp("2016-06-15")]
+    assert found[0]["direction"] == "down"
+
+
 def test_one_day_blip_is_suppressed(df):
     assert alerts_for(scaled(df, ["2016-03-10"], 1.2), make_config(), "2016-03-12") == []
 

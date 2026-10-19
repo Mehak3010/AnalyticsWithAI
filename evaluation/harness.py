@@ -86,14 +86,39 @@ def run_series_eval(series: pd.Series, runners: dict[str, Runner], settings: Eva
         clean_flags[name] = {f for flags in replay.values() for f in flags}
 
     primary = next(iter(runners))
+
     candidates = [d for d in eval_dates if d + pd.Timedelta(days=settings.max_delay) <= end]
+
+    # Keep the safety check: ensure at least one candidate is sufficiently
+    # far from natural alerts reported by the primary detector.
     avoid = [d for d, _ in clean_flags[primary]]
-    dates = sample_dates(candidates, avoid, settings.n_dates, settings.max_delay, settings.min_gap_days, rng)
+
+    safe_candidates = [
+        d for d in candidates if all(abs((d - alert_date).days) > settings.max_delay for alert_date in avoid)
+    ]
+
+    if not safe_candidates:
+        raise ValueError(
+            f"No usable injection dates: the {primary} flagged "
+            f"{len(clean_flags[primary])} natural anomalies in the "
+            f"{len(eval_dates)}-day replay window, leaving no clean stretch. "
+            "Increase eval_days or review the thresholds."
+        )
+
+    # Select actual injection dates independently of detector output.
+    dates = sample_dates(
+        candidates=candidates,
+        avoid=[],
+        n=settings.n_dates,
+        max_delay=settings.max_delay,
+        min_gap=settings.min_gap_days,
+        rng=rng,
+    )
+
     if not dates:
         raise ValueError(
-            f"No usable injection dates: the {primary} flagged {len(clean_flags[primary])} natural anomalies "
-            f"in the {len(eval_dates)}-day replay window, leaving no clean stretch. "
-            "Increase eval_days or review the thresholds."
+            f"No usable injection dates in the {len(eval_dates)}-day replay window. "
+            "Increase eval_days or review the evaluation settings."
         )
 
     injector = AnomalyInjector(settings.seed)

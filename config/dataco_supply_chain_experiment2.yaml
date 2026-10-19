@@ -1,0 +1,89 @@
+dataset:
+  path: data/dataco_tidy.csv
+  date_column: order_date
+  grain: daily
+  segment_grain: weekly
+  end_date: "2017-09-30"     # the data degenerates after early Oct 2017 (see README)
+  dimensions:
+    - market
+    - order_region
+    - category_name
+    - shipping_mode
+    - customer_segment
+
+metrics:
+  - name: sales
+    column: sales
+    type: additive
+    aggregation: sum
+    priority: high
+    good_direction: up
+  - name: order_lines
+    column: order_item_id
+    type: additive
+    aggregation: count
+    priority: medium
+    good_direction: up
+  - name: profit_margin
+    type: ratio
+    numerator:
+      column: profit
+      aggregation: sum
+    denominator:
+      column: sales
+      aggregation: sum
+    priority: high
+    good_direction: up
+  - name: late_delivery_rate
+    type: ratio
+    numerator:
+      column: late_flag
+      aggregation: sum
+    denominator:
+      aggregation: count
+    priority: high
+    good_direction: down
+  - name: discount_rate
+    type: ratio
+    numerator:
+      column: discount_amount
+      aggregation: sum
+    denominator:
+      column: gross_sales
+      aggregation: sum
+    priority: medium
+    good_direction: down
+
+forecast:
+  method: ets
+  horizon_days: 14
+  interval: 0.95
+  backtest:
+    folds: 6
+    step_days: 14
+
+detection:
+  seasonal_period: 7
+  min_history: 28
+  # Defaults. Do not commit test values (e.g. 10 or 15) here; use a copy for experiments.
+  z_threshold: 3.5
+  spike_override_z: 6.0
+  persistence:
+    required: 2
+    window: 3
+  min_relative_change: 0.05
+  mad_floor_pct: 0.02
+
+alerting:
+  min_severity: medium
+  cooldown_days: 3
+  alert_window: 3
+  headline_only: true
+  email:
+    to: ["team@example.com"]
+    subject_prefix: "[Metric Alert]"
+
+llm:
+  provider: groq
+  model: qwen/qwen3.8-27b
+  max_retries: 1
