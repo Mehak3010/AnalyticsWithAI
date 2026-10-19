@@ -31,6 +31,15 @@ class EvalSettings:
     seed: int = 42
 
 
+def natural_noise(series: pd.Series, weeks: int = 4) -> float | None:
+    """Robust day-to-day noise: spread of each day's deviation from its same-weekday median (as a fraction)."""
+    ref = pd.concat([series.shift(7 * k) for k in range(1, weeks + 1)], axis=1).median(axis=1)
+    dev = (series / ref - 1).replace([np.inf, -np.inf], np.nan).dropna()
+    if len(dev) < 10:
+        return None
+    return float(1.4826 * np.median(np.abs(dev - dev.median())))
+
+
 def make_replay_runner(detect_fn: DetectFn) -> Runner:
     """Wrap a detector: on each as-of date it only sees data up to that date, like a scheduled run."""
 

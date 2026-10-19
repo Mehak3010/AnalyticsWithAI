@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from evaluation.baselines import fixed_threshold_flags, moving_average_z_flags, replay_flags
-from evaluation.harness import EvalSettings, make_replay_runner, run_series_eval, sample_dates
+from evaluation.harness import EvalSettings, make_replay_runner, natural_noise, run_series_eval, sample_dates
 from evaluation.inject import AnomalyInjector, inject_segment, injected_direction
 from evaluation.scoring import (
     Case,
@@ -207,3 +207,9 @@ def test_harness_fails_loudly_when_no_clean_stretch_exists(series):
 
     with pytest.raises(ValueError, match="No usable injection dates"):
         run_series_eval(series, {"detector": make_replay_runner(noisy)}, EvalSettings(eval_days=60, n_dates=2))
+
+
+def test_natural_noise_is_close_to_the_injected_noise_level(series):
+    # the fixture has ~2% multiplicative noise; the same-weekday median reference adds a little more
+    assert 0.015 < natural_noise(series) < 0.04
+    assert natural_noise(series.iloc[:5]) is None

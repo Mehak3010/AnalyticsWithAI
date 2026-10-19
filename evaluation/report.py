@@ -93,6 +93,17 @@ def render_markdown(payload: dict[str, Any], summary: dict[str, Any], chart_name
         "",
     ]
 
+    noise = setup.get("noise")
+    if noise:
+        sizes = ", ".join(f"{m:.0%} = {m / noise:.1f}x" for m in summary["magnitudes"])
+        out += [
+            (
+                f"Natural day-to-day noise in this series is about {noise:.1%} (robust spread around the "
+                f"same-weekday median). Injected sizes as a multiple of that noise: {sizes}."
+            ),
+            "",
+        ]
+
     out += ["## Results against targets", ""]
     rows = [[t, goal, got, "met" if ok else "missed"] for t, goal, got, ok in summary["targets"]]
     out += [_table(["Target", "Goal", "Result", "Status"], rows), ""]
@@ -147,8 +158,9 @@ def render_markdown(payload: dict[str, Any], summary: dict[str, Any], chart_name
     if attr.get("n"):
         out += [
             (
-                f"A segment's value on one day was scaled by {attr['magnitude']:.0%} in {attr['n']} cases, "
-                "and the attribution engine was asked to explain the resulting move in the total."
+                f"In {attr['n']} cases one segment's value on one day was scaled so that the total moved by "
+                f"{attr['total_move']:.0%} (the size of anomaly that raises an alert), and the attribution engine "
+                "was asked to explain the move."
             ),
             "",
             _table(
@@ -163,7 +175,7 @@ def render_markdown(payload: dict[str, Any], summary: dict[str, Any], chart_name
             ),
             "",
             (
-                "The headline story picks the dimension where one segment explains the most. DataCo dimensions are "
+                "The headline story picks the dimension whose top segment moved the most. DataCo dimensions are "
                 "partly nested (a region sits inside a market), so a parent segment can win that choice."
             ),
             "",

@@ -246,3 +246,13 @@ def test_driver_note_reaches_the_llm_bundle():
     slim = to_llm_facts(facts)
     assert slim["driver_note"].startswith("Mostly a rate effect")
     assert "driver_note" not in to_llm_facts({**facts, "driver_note": ""})
+
+
+def test_headline_dimension_is_the_one_with_the_largest_absolute_move():
+    def dim(move, share):
+        return {"contributors": [{"segment": "x", "move": move, "share": share}]}
+
+    # "noise" has a higher share (it only counts same-direction movement) but a much smaller move
+    by_dimension = {"noise": dim(5.0, 1.0), "market": dim(40.0, 0.8)}
+    assert AttributionEngine._pick_primary(by_dimension) == "market"
+    assert AttributionEngine._pick_primary({"a": dim(-30.0, 0.9), "b": dim(10.0, 1.0)}) == "a"
