@@ -22,10 +22,20 @@ def make_frame():
     # Four weekly baseline observations, plus the anomalous day.
     for date in ["2024-02-12", "2024-02-19", "2024-02-26", "2024-03-04"]:
         rows.append(
-            {"date": pd.Timestamp(date), "region": "north", "quantity": 10, "sales": 100.0}
+            {
+                "date": pd.Timestamp(date),
+                "region": "north",
+                "quantity": 10,
+                "sales": 100.0,
+            }
         )
     rows.append(
-        {"date": pd.Timestamp("2024-03-11"), "region": "north", "quantity": 12, "sales": 144.0}
+        {
+            "date": pd.Timestamp("2024-03-11"),
+            "region": "north",
+            "quantity": 12,
+            "sales": 144.0,
+        }
     )
     return pd.DataFrame(rows)
 
@@ -63,7 +73,8 @@ def test_ignores_non_headline_and_non_sales_anomalies():
 def test_missing_required_columns_fails_open():
     anomalies = [{"date": "2024-03-11", "metric": "sales", "segment": "total"}]
 
-    add_variance_context(anomalies, pd.DataFrame({"date": [pd.Timestamp("2024-03-11")]}), make_config())
+    frame = pd.DataFrame({"date": [pd.Timestamp("2024-03-11")]})
+    add_variance_context(anomalies, frame, make_config())
 
     assert "variance_context" not in anomalies[0]
 
