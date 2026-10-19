@@ -5,9 +5,9 @@ The bridge reconciles to actual revenue minus baseline revenue within floating-p
 """
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from typing import Any
-import math
 
 import pandas as pd
 
