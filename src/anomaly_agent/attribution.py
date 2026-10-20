@@ -243,6 +243,7 @@ class AttributionEngine:
     def _driver_text(contributor: dict[str, Any], is_ratio: bool) -> str:
         share = f"{abs(contributor['share']):.0%}"
         if not is_ratio:
-            return f"{contributor['segment']} ({share} of the move)"
+            direction = "upward" if contributor["move"] >= 0 else "downward"
+            return f"{contributor['segment']} ({share} of same-direction {direction} movement)"
         kind = "rate change" if abs(contributor["rate"]) >= abs(contributor["mix"]) else "mix shift"
-        return f"{contributor['segment']} ({share} of the change, mainly a {kind})"
+        return f"{contributor['segment']} ({share} of same-direction change, mainly a {kind})"
