@@ -159,7 +159,7 @@ def test_additive_attribution_finds_the_injected_segment(df):
     assert top["segment"] == "market=C"
     assert top["share"] > 0.9
     assert result["coverage"] >= 0.8
-    assert "market=C" in result["drivers"][0] and "of the move" in result["drivers"][0]
+    assert "market=C" in result["drivers"][0] and "same-direction upward movement" in result["drivers"][0]
     # channel is evenly affected, so it must not be chosen as the story
     assert result["by_dimension"]["channel"]["contributors"][0]["share"] < 0.6
 
