@@ -189,3 +189,20 @@ data/*.pkl
 reports/*.html
 !reports/.gitkeep
 find_headline.py
+
+# Local anomaly-detection experiments and parameter sweeps
+/evaluation/baseline_verified/
+/evaluation/controlled_baseline/
+/evaluation/controlled_baseline_v2/
+/evaluation/controlled_experiment/
+/evaluation/controlled_experiment_v2/
+/evaluation/experiment/
+/evaluation/experiment2/
+/evaluation/experiment4/
+/evaluation/threshold_sweep_*/
+/evaluation/z_sweep_*/
+/evaluation/diagnose_scores.py
+/evaluation/resume_numbers.py
+/config/dataco_supply_chain_experiment.yaml
+/config/threshold_sweep/
+/config/z_sweep/
