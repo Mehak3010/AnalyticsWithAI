@@ -16,6 +16,10 @@ class MetricEngine:
     def process(self, df: pd.DataFrame) -> dict[tuple[str, str], pd.Series]:
         results = {}
         date_col = self.config.dataset.date_column
+
+        if df.empty:
+            return results
+
         self._first = df[date_col].min().normalize()
         self._last = df[date_col].max().normalize()
 
@@ -24,11 +28,10 @@ class MetricEngine:
             series = self._compute_series(df, metric_cfg, date_col, self.config.dataset.grain)
             results[(metric_cfg.name, "total")] = series
 
-        # 2. Segment series
-        # One dimension at a time for now, to avoid a combinatorial explosion.
+        # 2. Segment series. Group once per dimension instead of repeatedly
+        # scanning the entire DataFrame for each distinct segment value.
         for dim in self.config.dataset.dimensions:
-            for val in df[dim].dropna().unique():
-                segment_df = df[df[dim] == val]
+            for val, segment_df in df.dropna(subset=[dim]).groupby(dim, sort=False):
                 segment_name = f"{dim}={val}"
 
                 for metric_cfg in self.config.metrics:
