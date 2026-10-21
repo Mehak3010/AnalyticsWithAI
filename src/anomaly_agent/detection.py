@@ -28,6 +28,7 @@ class Detector:
         """
         cfg = self.config.detection
         anomalies: list[dict[str, Any]] = []
+        metric_configs = {m.name: m for m in self.config.metrics}
         as_of_ts = pd.Timestamp(as_of) if as_of is not None else None
 
         for (metric, segment), series in series_dict.items():
@@ -36,7 +37,7 @@ class Detector:
             if len(series.dropna()) < cfg.min_history:
                 continue
 
-            metric_cfg = next(m for m in self.config.metrics if m.name == metric)
+            metric_cfg = metric_configs[metric]
             period_days = self._period_days(series)
 
             # Alerting scans (window set) judge the recent window against a baseline fitted
