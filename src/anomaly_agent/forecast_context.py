@@ -1,4 +1,5 @@
 """Attach clearly dated forward-looking forecast context to headline anomalies."""
+
 from __future__ import annotations
 
 import logging
@@ -25,7 +26,7 @@ def add_forecast_context(
     later data from being presented as if it were available at an earlier anomaly.
     Forecast failures are non-fatal to alerting.
     """
-    if not anomalies:
+    if not any(anomaly.get("segment") == "total" for anomaly in anomalies):
         return
     try:
         forecasts = Forecaster(config).forecast(series_dict)
