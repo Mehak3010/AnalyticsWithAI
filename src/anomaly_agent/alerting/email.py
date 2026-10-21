@@ -159,7 +159,7 @@ class EmailAlerter:
                                     <div style="font-size:11px;font-weight:bold;
                                                 letter-spacing:1px;color:#1d4ed8;
                                                 text-transform:uppercase;">
-                                        Forward outlook Â· {forecast_model}
+                                        Forward outlook· {forecast_model}
                                     </div>
                                     <div style="font-size:23px;font-weight:bold;
                                                 color:#1e3a8a;padding-top:5px;">
@@ -172,8 +172,7 @@ class EmailAlerter:
                                     <div style="font-size:12px;color:#475569;
                                                 padding-top:3px;">
                                         Prediction interval:
-                                        {forecast_lower:,.2f} â€“
-                                        {forecast_upper:,.2f}
+                                        {forecast_lower:,.2f} - {forecast_upper:,.2f}
                                     </div>
                                 </td>
                             </tr>
@@ -334,7 +333,7 @@ class EmailAlerter:
                             <div style="font-size:11px;font-weight:bold;
                                         letter-spacing:2px;color:#93c5fd;
                                         text-transform:uppercase;">
-                                Monitoring Â· Automated alert
+                                Monitoring· Automated alert
                             </div>
                             <div style="font-size:27px;font-weight:bold;
                                         color:#ffffff;padding-top:8px;">
@@ -391,7 +390,7 @@ class EmailAlerter:
                             </div>
                             <div style="font-size:11px;color:#94a3b8;
                                         padding-top:5px;">
-                                Automated analysis Â· Review findings before taking action
+                                Automated analysis · Review findings before taking action
                             </div>
                         </td>
                     </tr>
