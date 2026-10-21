@@ -15,7 +15,9 @@ From a real run on the DataCo data (`--as-of 2017-07-07`), using the rule-based 
 > **[MEDIUM] sales, total, 2017-07-07**
 > Observed 41,165.11 against an expected 30,348.33 (35.6% deviation). Possible drivers: category_name=Golf Apparel (124% vs expected); category_name=Golf Gloves (69% vs expected). This move warrants investigation.
 
-<!-- TODO: Add a representative screenshot of the generated email digest. -->
+### Example email digest
+
+![HTML anomaly digest showing KPI deviation, severity, and recommended action](docs/images/anomaly-digest.png)
 
 ## What works today
 
@@ -97,15 +99,34 @@ python -m venv .venv
 pip install -e .
 ```
 
-Create a `.env` file (never commit it):
+### Environment configuration
+
+Create your local environment file from the example:
+
+```bash
+# Windows Git Bash
+cp .env.example .env
+```
+
+Add your credentials and email settings to `.env`:
 
 ```env
-GROQ_API_KEY=your_key
-MAILTRAP_HOST=sandbox.smtp.mailtrap.io
+GROQ_API_KEY=your_groq_api_key
+
+MAILTRAP_HOST=live.smtp.mailtrap.io
 MAILTRAP_PORT=587
-MAILTRAP_USERNAME=your_username
-MAILTRAP_PASSWORD=your_password
+MAILTRAP_USERNAME=api
+MAILTRAP_PASSWORD=your_mailtrap_api_token
+MAILTRAP_FROM_EMAIL=hello@demomailtrap.co
+MAILTRAP_TO_EMAIL=your_registered_mailtrap_email
 ```
+
+- `GROQ_API_KEY` is used for LLM-generated alert summaries. The agent has a rule-based fallback if narration fails.
+- Mailtrap SMTP credentials are used to deliver the HTML anomaly digest.
+- The demo sender domain is intended for testing and has delivery restrictions. Follow Mailtrap's requirements or configure a verified sender domain for other recipients.
+
+**Security:** Never commit `.env` or expose API tokens. Use `.env.example` only for placeholders and non-secret defaults.
+
 
 Download the dataset, put `DataCoSupplyChainDataset.csv` in `data/`, then build the tidy table and run:
 
@@ -177,8 +198,8 @@ tests/                   pytest suite
 check_injection.py      injection check on real data
 ```
 
-## Roadmap
+## Future Improvements
 
-1. Add scheduled production runs and operational monitoring.
-2. Add a representative alert-email screenshot and a link to a green CI run.
-3. Expand evaluation to more datasets, random seeds, and anomaly scenarios, especially variance increases and missing-data gaps.
+1. **Production scheduling and monitoring:** Add scheduled execution, run-health monitoring, and operational failure alerts.
+2. **Broader evaluation:** Test across additional datasets, random seeds, and anomaly scenarios, including variance increases and missing-data gaps.
+3. **Detection quality:** Improve recall while controlling false alarms, and validate performance against labelled real-world incidents.
