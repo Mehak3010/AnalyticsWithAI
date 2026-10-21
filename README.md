@@ -2,7 +2,7 @@
 
 An agent that watches business KPIs, flags abnormal movement, lists the segments that moved with it, writes a plain-language summary, and emails an alert, so nobody has to open a spreadsheet to find out a metric broke.
 
-> **Status: functional prototype under evaluation.** The detection and alerting pipeline includes contribution attribution, numeric narration validation, forecast context, and a volume-price-mix variance bridge for headline sales anomalies. A reproducible comparative evaluation is now available. The experiment improves recall on injected anomalies but does not yet meet all recall and false-alarm targets; production scheduling and broader validation remain future work.
+> **Status: functional prototype under evaluation.** The detection and alerting pipeline includes contribution attribution, numeric narration validation, forecast context, and a volume-price-mix variance bridge for headline sales anomalies. A reproducible comparative evaluation is now available. The experiment improves recall on injected anomalies but does not yet meet all recall and false-alarm targets. Local Windows Task Scheduler execution is configured and has completed a successful run. Production-grade monitoring, operational failure alerts, and broader validation remain future work.
 
 ## The problem
 
@@ -13,6 +13,7 @@ Dashboards show what happened. They don't tell you what changed, why, or whether
 From a real run on the DataCo data (`--as-of 2017-07-07`), using the rule-based fallback summary:
 
 > **[MEDIUM] sales, total, 2017-07-07**
+>
 > Observed 41,165.11 against an expected 30,348.33 (35.6% deviation). Possible drivers: category_name=Golf Apparel (124% vs expected); category_name=Golf Gloves (69% vs expected). This move warrants investigation.
 
 ### Example email digest
@@ -28,10 +29,11 @@ From a real run on the DataCo data (`--as-of 2017-07-07`), using the rule-based 
 - **Anomaly detection.** An STL decomposition estimates the weekly pattern; a trailing median of the deseasonalised values gives a robust level that is never fitted on the points being judged. Deviations are scored with MAD-based robust z-scores, with a floor so flat or sparse series cannot produce huge scores.
 - **Persistence rule.** An anomaly needs 2 of the last 3 points flagged in the same direction, which suppresses one-day noise. A single extreme point (3x the z threshold) alerts immediately.
 - **Latest-period, headline-only alerting.** Only the last few periods of the headline series can raise an alert. Segment series are used to list possible drivers.
+- **Alert filtering behavior.** With `headline_only: true`, segment anomalies can explain a headline alert but do not independently trigger one. A run may detect anomalous segments yet produce no alert if no headline KPI qualifies.
 - **Severity scoring and cooldown deduplication.** A repeat of the same metric, segment and direction inside the cooldown window is suppressed unless its severity escalates. Alerts are stored in SQLite.
-- **LLM summaries with a fallback.** Groq writes the summary; on any API error the agent retries, then falls back to a rule-based summary.
+- **LLM summaries with a fallback.** Groq writes the summary; on API errors the agent retries, then falls back to a rule-based summary.
 - **HTML email alerting.** Sends formatted anomaly digests over SMTP using configurable recipients. The `--dry-run` mode generates a local HTML preview without sending an email.
-- **Tests and CI.** `pytest` suite plus a GitHub Actions workflow.
+- **Tests and CI.** A `pytest` suite and a GitHub Actions workflow.
 - **Controlled evaluation.** Day-by-day replay with injected anomaly cases, benchmark comparisons, precision/recall/F1, detection delay, and false-alarm tracking.
 
 ## Status
@@ -47,6 +49,7 @@ From a real run on the DataCo data (`--as-of 2017-07-07`), using the rule-based 
 | ETS forecast context and volume-price-mix variance | Forecast outlook and reconciled sales variance context are attached to eligible headline sales alerts and rendered in the email digest; covered by tests |
 | Numeric validator for LLM summaries | Implemented; invalid numbers trigger retry and deterministic fallback |
 | Evaluation harness and controlled reports | Implemented; baseline and experimental results are published below |
+| Windows daily runner | Implemented; Task Scheduler execution configured and a successful run verified |
 
 ## Controlled evaluation
 
@@ -76,6 +79,7 @@ The experiment improves recall by **17.5 percentage points** and halves median d
 This is a controlled experiment on one dataset, one random seed, and small sample counts per anomaly type and size. Injected anomalies are not a substitute for labelled real-world incidents. The clean historical series may also contain genuine anomalies that are counted as false alarms. Variance increases and missing-data gaps are not covered yet. Results should be treated as indicative, not as proof of production performance.
 
 Detailed reports and machine-readable results are available in:
+
 - `evaluation/controlled_baseline_v3/`
 - `evaluation/controlled_experiment_v3/`
 
@@ -86,33 +90,54 @@ Threshold and configuration sweeps are retained in their corresponding evaluatio
 [DataCo Smart Supply Chain for Big Data Analysis](https://www.kaggle.com/datasets/shashwatwork/dataco-smart-supply-chain-for-big-data-analysis) (Kaggle), originally published on [Mendeley Data](https://data.mendeley.com/datasets/8gx2fvg2k6/5). Check the licence there before redistributing; the data files are not committed to this repository.
 
 - **Monitoring window:** 2015-01-01 to 2017-09-30, 171,962 order lines, 5 markets (`dataset.end_date` in the config).
-- **Why the cutoff:** from early October 2017 the data degenerates: a constant 68 to 69 order lines a day, only two markets and one or two categories a day. Those months are excluded.
-- **Caveat:** the dataset looks partly synthetic with weak seasonality, so naturally occurring anomalies are few. Detection claims rest on injected anomalies described in the controlled evaluation above.
+- **Why the cutoff:** From early October 2017 the data degenerates: a constant 68 to 69 order lines a day, only two markets and one or two categories a day. Those months are excluded.
+- **Caveat:** The dataset looks partly synthetic with weak seasonality, so naturally occurring anomalies are few. Detection claims rest on injected anomalies described in the controlled evaluation above.
 
 ## Quick start
 
 Requires Python 3.11.
 
+Clone the repository and create a virtual environment:
+
 ```bash
 git clone https://github.com/Mehak3010/AnalyticsWithAI.git
 cd AnalyticsWithAI
 python -m venv .venv
-# Windows (Git Bash)
+```
+
+Activate the environment using the instructions for your terminal.
+
+**Windows — Git Bash**
+
+```bash
 source .venv/Scripts/activate
+```
 
-# Windows (PowerShell)
-# .\.venv\Scripts\Activate.ps1
+**Windows — PowerShell**
 
-# macOS / Linux
-# source .venv/bin/activate
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+**Windows — Command Prompt (CMD)**
+
+```bat
+.venv\Scripts\activate.bat
+```
+
+**macOS / Linux**
+
+```bash
+source .venv/bin/activate
 ```
 
 ### Environment configuration
 
-Create your local environment file from the example:
+Create your local environment file from the example.
+
+**Windows — Git Bash**
 
 ```bash
-# Windows Git Bash
 cp .env.example .env
 ```
 
@@ -135,8 +160,9 @@ MAILTRAP_TO_EMAIL=your_registered_mailtrap_email
 
 **Security:** Never commit `.env` or expose API tokens. Use `.env.example` only for placeholders and non-secret defaults.
 
+### Prepare the data and run
 
-Download the dataset, put `DataCoSupplyChainDataset.csv` in `data/`, then build the tidy table and run:
+Download the dataset and place `DataCoSupplyChainDataset.csv` in `data/`. Then build the tidy table and run a dry-run:
 
 ```bash
 python data/prep_dataco.py
@@ -149,7 +175,23 @@ To reproduce the historical demo without sending real email:
 python -m anomaly_agent.cli --config config/dataco_supply_chain.yaml --dry-run --full-history
 ```
 
-This scans all available history and is intended for demonstrations and experiments, not as the scheduled alerting mode.
+### Scheduled execution (Windows)
+
+The project includes `scripts/run_daily.bat`, which runs the agent using the project's virtual environment and appends output to `logs/daily_run.log`.
+
+To run manually from Command Prompt at the project root:
+
+```bat
+scripts\run_daily.bat
+```
+
+A Windows Task Scheduler task can run this script on a daily trigger. The computer must be available at the scheduled time.
+
+A successful run does not necessarily send an email; an alert must first qualify under the configured detection and filtering rules. With `headline_only: true`, segment anomalies alone do not trigger alerts.
+
+The `--full-history` option scans the full available history and is intended for demonstrations and experiments, not scheduled alerting.
+
+### CLI options
 
 | Option | Meaning |
 |---|---|
@@ -160,19 +202,23 @@ This scans all available history and is intended for demonstrations and experime
 
 ## Key configuration
 
+The following values are examples from `config/dataco_supply_chain.yaml`:
+
 ```yaml
 dataset:
-  end_date: "2017-09-30"      # monitoring window
+  end_date: "2017-09-30"  # monitoring window
+
 detection:
   z_threshold: 3.5
   persistence: {required: 2, window: 3}
   min_relative_change: 0.05
   mad_floor_pct: 0.02
+
 alerting:
   min_severity: medium
   cooldown_days: 3
-  alert_window: 3             # only the last N periods can alert
-  headline_only: true         # segments explain, they do not alert
+  alert_window: 3         # only the last N periods can alert
+  headline_only: true     # segments explain, they do not alert
 ```
 
 ## Testing and verification
@@ -198,28 +244,28 @@ Deduplication, config-driven behaviour, and the LLM fallback were also checked m
 
 ## Project structure
 
-```
-config/                 YAML configs
-data/prep_dataco.py     raw CSV -> tidy table (raw files are not committed)
+```text
+config/                  YAML configs
+data/prep_dataco.py      raw CSV -> tidy table (raw files are not committed)
 src/anomaly_agent/
-  ingestion.py          load, window, validate
-  metrics.py            additive and ratio series
-  detection.py          baseline, robust z-scores, persistence
-  severity.py           severity scoring
-  store.py              SQLite alert log and deduplication
-  narration/            Groq client, retry, fallback
-  alerting/             email digest
-  cli.py                entry point
+  ingestion.py           load, window, validate
+  metrics.py             additive and ratio series
+  detection.py           baseline, robust z-scores, persistence
+  severity.py            severity scoring
+  store.py               SQLite alert log and deduplication
+  narration/             Groq client, retry, fallback
+  alerting/               email digest
+  cli.py                 entry point
   attribution.py         segment contribution and ratio mix/rate attribution
-  forecasting.py        ETS forecast and seasonal-naive fallback
+  forecasting.py         ETS forecast and seasonal-naive fallback
   variance.py            volume-price-mix revenue bridge
-evaluation/              injection, baselines, replay harness and scoring
-tests/                   pytest suite
-check_injection.py      injection check on real data
+evaluation/               injection, baselines, replay harness and scoring
+tests/                    pytest suite
+check_injection.py        injection check on real data
 ```
 
 ## Future Improvements
 
-1. **Production scheduling and monitoring:** Add scheduled execution, run-health monitoring, and operational failure alerts.
+1. **Operational monitoring:** Add run-health monitoring, operational failure alerts, and production-grade scheduling safeguards.
 2. **Broader evaluation:** Test across additional datasets, random seeds, and anomaly scenarios, including variance increases and missing-data gaps.
 3. **Detection quality:** Improve recall while controlling false alarms, and validate performance against labelled real-world incidents.
