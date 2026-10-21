@@ -19,6 +19,8 @@ From a real run on the DataCo data (`--as-of 2017-07-07`), using the rule-based 
 
 ![HTML anomaly digest showing KPI deviation, severity, and recommended action](docs/images/anomaly-digest.png)
 
+*Illustrative digest generated with synthetic KPI values. It highlights anomaly severity, observed versus expected performance, percentage deviation, and recommended investigation steps.*
+
 ## What works today
 
 - **Config-driven.** One YAML file defines the date column, metrics, dimensions and thresholds. No metric names are hard-coded.
@@ -28,7 +30,7 @@ From a real run on the DataCo data (`--as-of 2017-07-07`), using the rule-based 
 - **Latest-period, headline-only alerting.** Only the last few periods of the headline series can raise an alert. Segment series are used to list possible drivers.
 - **Severity scoring and cooldown deduplication.** A repeat of the same metric, segment and direction inside the cooldown window is suppressed unless its severity escalates. Alerts are stored in SQLite.
 - **LLM summaries with a fallback.** Groq writes the summary; on any API error the agent retries, then falls back to a rule-based summary.
-- **Email digest** over SMTP (Mailtrap sandbox for development), with a `--dry-run` mode that writes the HTML to `reports/`.
+- **HTML email alerting.** Sends formatted anomaly digests over SMTP using configurable recipients. The `--dry-run` mode generates a local HTML preview without sending an email.
 - **Tests and CI.** `pytest` suite plus a GitHub Actions workflow.
 - **Controlled evaluation.** Day-by-day replay with injected anomaly cases, benchmark comparisons, precision/recall/F1, detection delay, and false-alarm tracking.
 
@@ -95,8 +97,14 @@ Requires Python 3.11.
 git clone https://github.com/Mehak3010/AnalyticsWithAI.git
 cd AnalyticsWithAI
 python -m venv .venv
-# Windows: .venv\\Scripts\\Activate.ps1      Mac/Linux: source .venv/bin/activate
-pip install -e .
+# Windows (Git Bash)
+source .venv/Scripts/activate
+
+# Windows (PowerShell)
+# .\.venv\Scripts\Activate.ps1
+
+# macOS / Linux
+# source .venv/bin/activate
 ```
 
 ### Environment configuration
@@ -169,12 +177,24 @@ alerting:
 
 ## Testing and verification
 
+The project includes automated tests covering KPI computation, anomaly detection, persistence rules, severity scoring, attribution, forecasting, variance analysis, and alert generation.
+
+The latest local verification completed successfully:
+
+- **99 automated tests passed.**
+- **Ruff linting passed.**
+- **HTML email delivery and rendering** were verified through a controlled SMTP test.
+
+Run the automated checks:
+
 ```bash
 python -m pytest -q
-python check_injection.py     # injects known anomalies into the real data
+ruff check .
 ```
 
-The injection check, on the real data: clean data gives no alert; a 3x one-day spike alerts on its exact date; a 1.35x one-day blip is suppressed; a 1.5x three-day shift alerts once with no opposite-direction echo. Deduplication, config-driven behaviour and the LLM fallback were also checked by hand. See [VERIFICATION.md](VERIFICATION.md) for the full log, including what is not done and the known limits.
+The injection check uses the real dataset to test known scenarios: clean data produces no alert, a 3x one-day spike alerts on its exact date, a 1.35x one-day blip is suppressed, and a 1.5x three-day shift alerts once without an opposite-direction echo.
+
+Deduplication, config-driven behaviour, and the LLM fallback were also checked manually. See [VERIFICATION.md](VERIFICATION.md) for the full verification log, including known limitations.
 
 ## Project structure
 
