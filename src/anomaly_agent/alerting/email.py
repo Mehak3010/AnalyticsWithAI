@@ -33,6 +33,7 @@ class EmailAlerter:
         self.port = int(os.getenv("MAILTRAP_PORT", "587"))
         self.username = os.getenv("MAILTRAP_USERNAME")
         self.password = os.getenv("MAILTRAP_PASSWORD")
+        self.to_email = os.getenv("MAILTRAP_TO_EMAIL")
 
     def send_digest(self, anomalies: list[dict[str, Any]], dry_run: bool = False):
         if not anomalies:
@@ -52,8 +53,10 @@ class EmailAlerter:
 
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
-        msg["From"] = "alerts@anomaly-agent.ai"
-        msg["To"] = ", ".join(self.config.alerting.email["to"])
+        msg["From"] = os.getenv("MAILTRAP_FROM_EMAIL", "").strip()
+        if not msg["From"]:
+            raise ValueError("MAILTRAP_FROM_EMAIL is not configured in .env")
+        msg["To"] = self.to_email
         msg.attach(MIMEText(body, "html"))
 
         try:
