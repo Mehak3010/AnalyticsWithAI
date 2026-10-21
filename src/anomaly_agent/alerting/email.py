@@ -33,19 +33,22 @@ class EmailAlerter:
         self.port = int(os.getenv("MAILTRAP_PORT", "587"))
         self.username = os.getenv("MAILTRAP_USERNAME")
         self.password = os.getenv("MAILTRAP_PASSWORD")
-        self.to_email = os.getenv("MAILTRAP_TO_EMAIL")
+        self.to_email = os.getenv("MAILTRAP_TO_EMAIL", "").strip()
 
     def send_digest(self, anomalies: list[dict[str, Any]], dry_run: bool = False):
         if not anomalies:
             print("No anomalies to send.")
             return
 
+        if not self.to_email:
+            raise ValueError("MAILTRAP_TO_EMAIL is not configured in .env")
+
         subject = f"{self.config.alerting.email['subject_prefix']} Anomaly Digest - {len(anomalies)} alerts"
         body = self._build_html_body(anomalies)
 
         if dry_run:
             os.makedirs("reports", exist_ok=True)
-            print(f"DRY RUN: Email would be sent to {self.config.alerting.email['to']}")
+            print(f"DRY RUN: Email would be sent to {self.to_email}")
             print(f"Subject: {subject}")
             with open("reports/last_email_digest.html", "w", encoding="utf-8") as f:
                 f.write(body)
@@ -156,7 +159,7 @@ class EmailAlerter:
                                     <div style="font-size:11px;font-weight:bold;
                                                 letter-spacing:1px;color:#1d4ed8;
                                                 text-transform:uppercase;">
-                                        Forward outlook · {forecast_model}
+                                        Forward outlook Â· {forecast_model}
                                     </div>
                                     <div style="font-size:23px;font-weight:bold;
                                                 color:#1e3a8a;padding-top:5px;">
@@ -169,7 +172,7 @@ class EmailAlerter:
                                     <div style="font-size:12px;color:#475569;
                                                 padding-top:3px;">
                                         Prediction interval:
-                                        {forecast_lower:,.2f} –
+                                        {forecast_lower:,.2f} â€“
                                         {forecast_upper:,.2f}
                                     </div>
                                 </td>
@@ -331,7 +334,7 @@ class EmailAlerter:
                             <div style="font-size:11px;font-weight:bold;
                                         letter-spacing:2px;color:#93c5fd;
                                         text-transform:uppercase;">
-                                Monitoring · Automated alert
+                                Monitoring Â· Automated alert
                             </div>
                             <div style="font-size:27px;font-weight:bold;
                                         color:#ffffff;padding-top:8px;">
@@ -388,7 +391,7 @@ class EmailAlerter:
                             </div>
                             <div style="font-size:11px;color:#94a3b8;
                                         padding-top:5px;">
-                                Automated analysis · Review findings before taking action
+                                Automated analysis Â· Review findings before taking action
                             </div>
                         </td>
                     </tr>
