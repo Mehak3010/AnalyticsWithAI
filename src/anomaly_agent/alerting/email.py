@@ -1,5 +1,6 @@
 import html
 import os
+import re
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -26,6 +27,131 @@ def escape(value: Any) -> str:
     return html.escape(str(value if value is not None else ""))
 
 
+def impact_statement(anomaly: dict[str, Any]) -> str:
+    """Describe unexpected movement without assuming business benefit."""
+    try:
+        observed = float(anomaly["observed"])
+        expected = float(anomaly["expected"])
+    except (KeyError, TypeError, ValueError):
+        return (
+            "The business impact is not established by this alert alone. "
+            "Validate the source data and business context before acting."
+        )
+
+    if observed > expected:
+        comparison = "above"
+    elif observed < expected:
+        comparison = "below"
+    else:
+        comparison = "at"
+
+    return (
+        f"The observed value is {comparison} the expected level. "
+        "An unexpected movement does not by itself establish whether the "
+        "change is beneficial or harmful. Validate the source data and "
+        "business context before acting."
+    )
+
+
+def format_email_narration(anomaly: dict[str, Any]) -> str:
+    """Replace overconfident narration with cautious, evidence-aware wording."""
+    narration = str(anomaly.get("narration") or "No narration available.").strip()
+
+    lines = []
+    impact_added = False
+    driver_added = False
+
+    for line in narration.splitlines():
+        stripped = line.strip()
+        lowered = stripped.lower()
+
+        # Ruff PIE810 fix: pass both prefixes in one startswith() call.
+        if lowered.startswith(("why it matters:", "potential impact:")):
+            lines.append(f"Potential impact: {impact_statement(anomaly)}")
+            impact_added = True
+
+        elif lowered.startswith("possible driver:"):
+            lines.append(
+                "Possible driver: Review the attributed segments below. "
+                "These indicate potential contributors, not confirmed causes."
+            )
+            driver_added = True
+
+        else:
+            lines.append(stripped)
+
+    if not driver_added:
+        lines.append("Possible driver: Review the attributed segments below. Attribution is not proof of cause.")
+
+    if not impact_added:
+        lines.append(f"Potential impact: {impact_statement(anomaly)}")
+
+    return "\n".join(lines)
+
+
+def format_driver(driver: Any) -> tuple[str, str]:
+    """Format technical attribution strings as readable labels and details."""
+    raw = str(driver).strip()
+
+    match = re.match(
+        r"^(?P<dimension>[A-Za-z0-9_-]+)\s*=\s*"
+        r"(?P<value>.*?)\s*\((?P<detail>.+)\)$",
+        raw,
+    )
+
+    if not match:
+        return raw, ""
+
+    dimension = match.group("dimension")
+    value = match.group("value").strip()
+    detail = match.group("detail").strip()
+
+    dimension_labels = {
+        "order_region": "Region",
+        "market": "Market",
+        "category_name": "Category",
+        "shipping_mode": "Shipping mode",
+        "customer_segment": "Customer segment",
+    }
+
+    label = dimension_labels.get(
+        dimension,
+        dimension.replace("_", " ").title(),
+    )
+    title = f"{label}: {value}"
+
+    contribution = re.match(
+        r"(?P<pct>\d+(?:\.\d+)?%) of same-direction "
+        r"(?P<direction>upward|downward) movement",
+        detail,
+        flags=re.IGNORECASE,
+    )
+
+    if contribution:
+        pct = contribution.group("pct")
+        direction = contribution.group("direction").lower()
+        return title, (f"Attributed contribution: {pct} of the {direction} movement")
+
+    ratio_contribution = re.match(
+        r"(?P<pct>\d+(?:\.\d+)?%) of same-direction change"
+        r"(?:, mainly a (?P<effect>.+))?",
+        detail,
+        flags=re.IGNORECASE,
+    )
+
+    if ratio_contribution:
+        text = f"Attributed contribution: {ratio_contribution.group('pct')} of the same-direction change"
+        effect = ratio_contribution.group("effect")
+        if effect:
+            text += f"; mainly a {effect}"
+        return title, text
+
+    if re.search(r"\bvs\.?\s*expected\b", detail, flags=re.IGNORECASE):
+        return title, f"Segment deviation: {detail}"
+
+    return title, detail
+
+
 class EmailAlerter:
     def __init__(self, config: Config):
         self.config = config
@@ -35,7 +161,11 @@ class EmailAlerter:
         self.password = os.getenv("MAILTRAP_PASSWORD")
         self.to_email = os.getenv("MAILTRAP_TO_EMAIL", "").strip()
 
-    def send_digest(self, anomalies: list[dict[str, Any]], dry_run: bool = False):
+    def send_digest(
+        self,
+        anomalies: list[dict[str, Any]],
+        dry_run: bool = False,
+    ) -> None:
         if not anomalies:
             print("No anomalies to send.")
             return
@@ -50,15 +180,23 @@ class EmailAlerter:
             os.makedirs("reports", exist_ok=True)
             print(f"DRY RUN: Email would be sent to {self.to_email}")
             print(f"Subject: {subject}")
-            with open("reports/last_email_digest.html", "w", encoding="utf-8") as f:
-                f.write(body)
+
+            with open(
+                "reports/last_email_digest.html",
+                "w",
+                encoding="utf-8",
+            ) as file:
+                file.write(body)
+
             return
 
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
         msg["From"] = os.getenv("MAILTRAP_FROM_EMAIL", "").strip()
+
         if not msg["From"]:
             raise ValueError("MAILTRAP_FROM_EMAIL is not configured in .env")
+
         msg["To"] = self.to_email
         msg.attach(MIMEText(body, "html"))
 
@@ -67,17 +205,25 @@ class EmailAlerter:
                 server.starttls()
                 server.login(self.username, self.password)
                 server.send_message(msg)
+
             print("Email digest sent successfully.")
-        except Exception as e:
-            print(f"Failed to send email: {e}")
+
+        except Exception as exc:
+            print(f"Failed to send email: {exc}")
             raise
 
-    def _build_html_body(self, anomalies: list[dict[str, Any]]) -> str:
+    def _build_html_body(
+        self,
+        anomalies: list[dict[str, Any]],
+    ) -> str:
         ordered = sorted(
             anomalies,
-            key=lambda x: (
-                SEVERITY_RANK.get(x["severity"], 0),
-                abs(x.get("z_score", 0)),
+            key=lambda item: (
+                SEVERITY_RANK.get(
+                    str(item.get("severity", "low")).lower(),
+                    0,
+                ),
+                abs(float(item.get("z_score", 0) or 0)),
             ),
             reverse=True,
         )
@@ -85,35 +231,55 @@ class EmailAlerter:
         cards = []
 
         for anomaly in ordered:
-            severity = str(anomaly["severity"]).lower()
-            severity_color, severity_bg = SEVERITY_COLORS.get(severity, ("#374151", "#f3f4f6"))
+            severity = str(anomaly.get("severity", "low")).lower()
+            severity_color, severity_bg = SEVERITY_COLORS.get(
+                severity,
+                ("#374151", "#f3f4f6"),
+            )
 
             date = anomaly.get("date")
             date_text = date.date().isoformat() if hasattr(date, "date") else str(date or "")
 
-            metric = escape(anomaly["metric"])
-            segment = escape(anomaly["segment"])
-            narration = escape(anomaly.get("narration") or "No narration available.")
+            metric = escape(anomaly.get("metric", "KPI"))
+            segment = escape(anomaly.get("segment", "total"))
+            narration = escape(format_email_narration(anomaly))
             severity_label = escape(severity.upper())
 
             observed = float(anomaly["observed"])
             expected = float(anomaly["expected"])
             deviation = float(anomaly["rel_deviation"])
+            absolute_change = observed - expected
 
-            drivers = anomaly.get("drivers") or []
-            driver_items = "".join(
-                f"""
-                <tr>
-                    <td style="padding:7px 10px;border-bottom:1px solid #e5e7eb;
-                               color:#374151;font-size:13px;">
-                        {escape(driver)}
-                    </td>
-                </tr>
-                """
-                for driver in drivers
-            )
+            # Display attribution as reader-friendly labels.
+            driver_rows = []
 
+            for driver in anomaly.get("drivers") or []:
+                driver_title, driver_detail = format_driver(driver)
+
+                detail_html = ""
+                if driver_detail:
+                    detail_html = (
+                        f'<div style="font-size:12px;color:#64748b;padding-top:3px;">{escape(driver_detail)}</div>'
+                    )
+
+                driver_rows.append(
+                    f"""
+                    <tr>
+                        <td style="padding:9px 10px;
+                                   border-bottom:1px solid #e5e7eb;
+                                   color:#374151;font-size:13px;">
+                            <div style="font-weight:bold;">
+                                {escape(driver_title)}
+                            </div>
+                            {detail_html}
+                        </td>
+                    </tr>
+                    """
+                )
+
+            driver_items = "".join(driver_rows)
             driver_section = ""
+
             if driver_items:
                 driver_section = f"""
                 <tr>
@@ -127,8 +293,8 @@ class EmailAlerter:
                 </tr>
                 <tr>
                     <td style="padding:0 24px 8px;">
-                        <table role="presentation" width="100%" cellspacing="0"
-                               cellpadding="0"
+                        <table role="presentation" width="100%"
+                               cellspacing="0" cellpadding="0"
                                style="border:1px solid #e5e7eb;
                                       border-radius:8px;">
                             {driver_items}
@@ -150,29 +316,37 @@ class EmailAlerter:
                 forecast_section = f"""
                 <tr>
                     <td style="padding:16px 24px 22px;">
-                        <table role="presentation" width="100%" cellspacing="0"
-                               cellpadding="0"
-                               style="background:#eff6ff;border:1px solid #bfdbfe;
+                        <table role="presentation" width="100%"
+                               cellspacing="0" cellpadding="0"
+                               style="background:#eff6ff;
+                                      border:1px solid #bfdbfe;
                                       border-radius:8px;">
                             <tr>
                                 <td style="padding:14px 16px;">
-                                    <div style="font-size:11px;font-weight:bold;
-                                                letter-spacing:1px;color:#1d4ed8;
+                                    <div style="font-size:11px;
+                                                font-weight:bold;
+                                                letter-spacing:1px;
+                                                color:#1d4ed8;
                                                 text-transform:uppercase;">
-                                        Forward outlook· {forecast_model}
+                                        Forward outlook · {forecast_model}
                                     </div>
-                                    <div style="font-size:23px;font-weight:bold;
-                                                color:#1e3a8a;padding-top:5px;">
+                                    <div style="font-size:23px;
+                                                font-weight:bold;
+                                                color:#1e3a8a;
+                                                padding-top:5px;">
                                         {forecast_value:,.2f}
                                     </div>
-                                    <div style="font-size:12px;color:#475569;
+                                    <div style="font-size:12px;
+                                                color:#475569;
                                                 padding-top:5px;">
                                         Forecast date: {forecast_date}
                                     </div>
-                                    <div style="font-size:12px;color:#475569;
+                                    <div style="font-size:12px;
+                                                color:#475569;
                                                 padding-top:3px;">
                                         Prediction interval:
-                                        {forecast_lower:,.2f} - {forecast_upper:,.2f}
+                                        {forecast_lower:,.2f} -
+                                        {forecast_upper:,.2f}
                                     </div>
                                 </td>
                             </tr>
@@ -185,9 +359,10 @@ class EmailAlerter:
                 f"""
                 <tr>
                     <td style="padding:0 0 22px;">
-                        <table role="presentation" width="100%" cellspacing="0"
-                               cellpadding="0"
-                               style="background:#ffffff;border:1px solid #e2e8f0;
+                        <table role="presentation" width="100%"
+                               cellspacing="0" cellpadding="0"
+                               style="background:#ffffff;
+                                      border:1px solid #e2e8f0;
                                       border-radius:12px;overflow:hidden;">
                             <tr>
                                 <td style="padding:20px 24px 16px;">
@@ -230,50 +405,85 @@ class EmailAlerter:
                                             </td>
                                         </tr>
                                     </table>
-                                    <div style="font-size:12px;color:#64748b;
+                                    <div style="font-size:12px;
+                                                color:#64748b;
                                                 padding-top:14px;">
                                         Detected on {escape(date_text)}
                                     </div>
                                 </td>
                             </tr>
+
                             <tr>
                                 <td style="padding:0 24px 20px;">
                                     <table role="presentation" width="100%"
                                            cellspacing="0" cellpadding="0">
                                         <tr>
-                                            <td width="33%" style="padding:12px 8px;
-                                                background:#f8fafc;border:1px solid #e2e8f0;
-                                                border-radius:8px;vertical-align:top;">
-                                                <div style="font-size:11px;color:#64748b;">
+                                            <td width="24%"
+                                                style="padding:12px 7px;
+                                                       background:#f8fafc;
+                                                       border:1px solid #e2e8f0;
+                                                       border-radius:8px;
+                                                       vertical-align:top;">
+                                                <div style="font-size:11px;
+                                                            color:#64748b;">
                                                     OBSERVED
                                                 </div>
-                                                <div style="font-size:17px;font-weight:bold;
-                                                            color:#0f172a;padding-top:5px;">
+                                                <div style="font-size:16px;
+                                                            font-weight:bold;
+                                                            color:#0f172a;
+                                                            padding-top:5px;">
                                                     {observed:,.2f}
                                                 </div>
                                             </td>
-                                            <td width="4%"></td>
-                                            <td width="33%" style="padding:12px 8px;
-                                                background:#f8fafc;border:1px solid #e2e8f0;
-                                                border-radius:8px;vertical-align:top;">
-                                                <div style="font-size:11px;color:#64748b;">
+                                            <td width="1.3%"></td>
+                                            <td width="24%"
+                                                style="padding:12px 7px;
+                                                       background:#f8fafc;
+                                                       border:1px solid #e2e8f0;
+                                                       border-radius:8px;
+                                                       vertical-align:top;">
+                                                <div style="font-size:11px;
+                                                            color:#64748b;">
                                                     EXPECTED
                                                 </div>
-                                                <div style="font-size:17px;font-weight:bold;
-                                                            color:#0f172a;padding-top:5px;">
+                                                <div style="font-size:16px;
+                                                            font-weight:bold;
+                                                            color:#0f172a;
+                                                            padding-top:5px;">
                                                     {expected:,.2f}
                                                 </div>
                                             </td>
-                                            <td width="4%"></td>
-                                            <td width="26%" style="padding:12px 8px;
-                                                background:{severity_bg};
-                                                border:1px solid {severity_bg};
-                                                border-radius:8px;vertical-align:top;">
+                                            <td width="1.3%"></td>
+                                            <td width="24%"
+                                                style="padding:12px 7px;
+                                                       background:#f8fafc;
+                                                       border:1px solid #e2e8f0;
+                                                       border-radius:8px;
+                                                       vertical-align:top;">
+                                                <div style="font-size:11px;
+                                                            color:#64748b;">
+                                                    ABS. CHANGE
+                                                </div>
+                                                <div style="font-size:16px;
+                                                            font-weight:bold;
+                                                            color:#0f172a;
+                                                            padding-top:5px;">
+                                                    {absolute_change:+,.2f}
+                                                </div>
+                                            </td>
+                                            <td width="1.3%"></td>
+                                            <td width="24%"
+                                                style="padding:12px 7px;
+                                                       background:{severity_bg};
+                                                       border:1px solid {severity_bg};
+                                                       border-radius:8px;
+                                                       vertical-align:top;">
                                                 <div style="font-size:11px;
                                                             color:{severity_color};">
                                                     DEVIATION
                                                 </div>
-                                                <div style="font-size:17px;font-weight:bold;
+                                                <div style="font-size:16px;
+                                                            font-weight:bold;
                                                             color:{severity_color};
                                                             padding-top:5px;">
                                                     {deviation:+.1%}
@@ -283,17 +493,21 @@ class EmailAlerter:
                                     </table>
                                 </td>
                             </tr>
+
                             <tr>
                                 <td style="padding:18px 24px;
                                            background:#f8fafc;
                                            border-top:1px solid #e2e8f0;">
-                                    <div style="font-size:11px;font-weight:bold;
-                                                letter-spacing:1px;color:#64748b;
+                                    <div style="font-size:11px;
+                                                font-weight:bold;
+                                                letter-spacing:1px;
+                                                color:#64748b;
                                                 text-transform:uppercase;
                                                 padding-bottom:10px;">
-                                        Analysis & recommended action
+                                        Analysis &amp; recommended action
                                     </div>
-                                    <div style="font-size:13px;line-height:1.8;
+                                    <div style="font-size:13px;
+                                                line-height:1.8;
                                                 color:#334155;
                                                 white-space:pre-line;">
                                         {narration}
@@ -325,15 +539,14 @@ class EmailAlerter:
         <tr>
             <td align="center" style="padding:28px 12px;">
                 <table role="presentation" width="100%" cellspacing="0"
-                       cellpadding="0"
-                       style="max-width:720px;width:100%;">
+                       cellpadding="0" style="max-width:720px;width:100%;">
                     <tr>
                         <td style="background:#0f172a;padding:26px 28px;
                                    border-radius:12px 12px 0 0;">
                             <div style="font-size:11px;font-weight:bold;
                                         letter-spacing:2px;color:#93c5fd;
                                         text-transform:uppercase;">
-                                Monitoring· Automated alert
+                                Monitoring · Automated alert
                             </div>
                             <div style="font-size:27px;font-weight:bold;
                                         color:#ffffff;padding-top:8px;">
@@ -364,8 +577,9 @@ class EmailAlerter:
                                             {alert_count} {alert_word} detected
                                         </div>
                                     </td>
-                                    <td align="right" style="font-size:12px;
-                                        color:#64748b;vertical-align:middle;">
+                                    <td align="right"
+                                        style="font-size:12px;color:#64748b;
+                                               vertical-align:middle;">
                                         Review recommended
                                     </td>
                                 </tr>
@@ -374,8 +588,7 @@ class EmailAlerter:
                     </tr>
                     <tr>
                         <td style="background:#f8fafc;padding:20px 14px 2px;
-                                   border:1px solid #e2e8f0;
-                                   border-top:0;">
+                                   border:1px solid #e2e8f0;border-top:0;">
                             <table role="presentation" width="100%"
                                    cellspacing="0" cellpadding="0">
                                 {"".join(cards)}
